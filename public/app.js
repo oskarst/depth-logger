@@ -370,7 +370,7 @@ async function logPoint(depth, isShore = false) {
   lastSavedPoint = reading.coords;
   updateLastSavedUI();
   if (currentScreen === 'data') renderDataTable();
-  if (currentScreen === 'livemap') updateLiveMapPoints();
+  if (currentScreen === 'livemap') await updateLiveMapPoints();
   toast(`Saved ${depth.toFixed(1)}m` + (reading.coords ? ` @ ${reading.coords.latitude.toFixed(5)}, ${reading.coords.longitude.toFixed(5)}` : ' • no GPS'));
 }
 
@@ -1180,6 +1180,7 @@ async function renderDepthMap() {
 
 // === Live Map ===
 let liveMapPointsLayer = null;
+let liveMapContoursLayer = null;
 let liveMapWeedsLayer = null;
 let liveMapFishLayer = null;
 
@@ -1210,8 +1211,18 @@ async function renderLiveMap() {
     liveMap.setView([liveFix.latitude, liveFix.longitude], liveMap.getZoom());
   }
 
-  // Load points
+  // Load points and fit bounds if we have data
   await updateLiveMapPoints();
+
+  // Fit to points layer if exists, otherwise stay on GPS position
+  if (liveMapPointsLayer) {
+    try {
+      const bounds = liveMapPointsLayer.getBounds();
+      if (bounds.isValid()) {
+        liveMap.fitBounds(bounds, { padding: [20, 20], maxZoom: 17 });
+      }
+    } catch (e) {}
+  }
 
   // Start updating live marker
   if (!liveMap._liveInterval) {
@@ -1234,6 +1245,10 @@ async function updateLiveMapPoints() {
     liveMap.removeLayer(liveMapPointsLayer);
     liveMapPointsLayer = null;
   }
+  if (liveMapContoursLayer) {
+    liveMap.removeLayer(liveMapContoursLayer);
+    liveMapContoursLayer = null;
+  }
   if (liveMapWeedsLayer) {
     liveMap.removeLayer(liveMapWeedsLayer);
     liveMapWeedsLayer = null;
@@ -1254,16 +1269,27 @@ async function updateLiveMapPoints() {
         coords: r.latitude ? { latitude: r.latitude, longitude: r.longitude } : null
       }));
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('Failed to fetch server readings:', e);
+  }
 
   // Get local unsynced
-  const localRows = await withStore('readonly', (store, rp) => rp(store.getAll()));
-  const unsynced = localRows.filter(r => !r.synced);
+  let localRows = [];
+  try {
+    localRows = await withStore('readonly', (store, rp) => rp(store.getAll()));
+  } catch (e) {
+    console.error('Failed to fetch local readings:', e);
+  }
+  const unsynced = (localRows || []).filter(r => !r.synced);
 
   const allRows = [...serverRows, ...unsynced];
   const validPoints = allRows.filter(p => p.coords);
 
-  if (validPoints.length === 0) return;
+  if (validPoints.length === 0) {
+    // Bring live marker to front even if no points
+    if (liveMarker) liveMarker.bringToFront();
+    return;
+  }
 
   // Get max depth for color scale
   const maxDepth = Math.max(...validPoints.map(p => p.depth), 1);
@@ -1290,6 +1316,28 @@ async function updateLiveMapPoints() {
       layer.bindPopup(`${feature.properties.depth}m${hasWeeds}`);
     }
   }).addTo(liveMap);
+
+  // Add contour lines (need at least 3 points)
+  if (validPoints.length >= 3) {
+    try {
+      const cellSize = 0.00005;
+      const options = { gridType: 'point', property: 'depth', units: 'degrees', weight: 2 };
+      const grid = turf.interpolate(fc, cellSize, options);
+      const breaks = Array.from({length: Math.ceil(maxDepth)}, (_, i) => i + 1);
+      const isobaths = turf.isolines(grid, breaks, { zProperty: 'depth' });
+
+      liveMapContoursLayer = L.geoJSON(isobaths, {
+        style: { color: '#000', weight: 1.5, opacity: 0.6, dashArray: '4,4' },
+        onEachFeature: function(feature, layer) {
+          if (feature.properties && feature.properties.depth) {
+            layer.bindTooltip(feature.properties.depth + 'm', { permanent: false, direction: 'center' });
+          }
+        }
+      }).addTo(liveMap);
+    } catch (e) {
+      console.error('Failed to generate contours:', e);
+    }
+  }
 
   // Add weeds cloud to live map
   const weedPoints = validPoints.filter(p => p.hasWeeds);
@@ -1346,8 +1394,13 @@ async function updateLiveMapPoints() {
           }).addTo(liveMap);
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Failed to load fish catches:', e);
+    }
   }
+
+  // Bring live marker to front
+  if (liveMarker) liveMarker.bringToFront();
 }
 
 function renderLivePad(container) {
