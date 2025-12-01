@@ -54,8 +54,10 @@ const screenProjects = $('#screen-projects');
 const screenLogger = $('#screen-logger');
 const screenData = $('#screen-data');
 const screenMap = $('#screen-map');
+const screenLivemap = $('#screen-livemap');
 const loggerContent = $('#logger-content');
 const mapBtn = $('#map-btn');
+const livemapBtn = $('#livemap-btn');
 const projectBadge = $('#bottombar-project');
 const changeProjectBtn = $('#change-project-btn');
 const projectsList = $('#projects-list');
@@ -65,6 +67,8 @@ const importBtn = $('#import-btn');
 const importFileInput = $('#import-file-input');
 const dataTableBody = document.querySelector('#data-table tbody');
 let depthMap = null;
+let liveMap = null;
+let liveMarker = null;
 let mapLayers = { depth: null, contours: null, points: null, weeds: null };
 let currentProject = null; // { id, name }
 
@@ -81,17 +85,19 @@ function showScreen(which){
   currentScreen = which;
 
   // Project screen is separate from logger content
-  const inLogger = ['logger', 'data', 'map'].includes(which);
+  const inLogger = ['logger', 'data', 'map', 'livemap'].includes(which);
   screenProjects.classList.toggle('active', which === 'projects');
   loggerContent.classList.toggle('hidden', !inLogger);
 
   screenLogger.classList.toggle('active', which === 'logger');
   screenData.classList.toggle('active', which === 'data');
   screenMap.classList.toggle('active', which === 'map');
+  screenLivemap.classList.toggle('active', which === 'livemap');
 
   if (which === 'projects') loadProjects();
   if (which === 'data') renderDataTable();
   if (which === 'map') renderDepthMap();
+  if (which === 'livemap') renderLiveMap();
 }
 
 // === Project Management ===
@@ -343,6 +349,7 @@ async function logPoint(depth) {
   lastSavedPoint = reading.coords;
   updateLastSavedUI();
   if (currentScreen === 'data') renderDataTable();
+  if (currentScreen === 'livemap') updateLiveMapPoints();
   toast(`Saved ${depth.toFixed(1)}m` + (reading.coords ? ` @ ${reading.coords.latitude.toFixed(5)}, ${reading.coords.longitude.toFixed(5)}` : ' • no GPS'));
 }
 
@@ -468,6 +475,7 @@ fishBtn.addEventListener('click', async () => {
 
 dataBtn.addEventListener('click', () => showScreen(currentScreen === 'data' ? 'logger' : 'data'));
 mapBtn.addEventListener('click', () => showScreen(currentScreen === 'map' ? 'logger' : 'map'));
+livemapBtn.addEventListener('click', () => showScreen(currentScreen === 'livemap' ? 'logger' : 'livemap'));
 changeProjectBtn.addEventListener('click', () => showScreen('projects'));
 addProjectBtn.addEventListener('click', () => {
   const name = newProjectInput.value.trim();
@@ -729,6 +737,153 @@ async function renderDepthMap() {
   legendEl.innerHTML = depths.map(d =>
     `<span class="legend-item"><span class="legend-swatch" style="background:${getDepthColor(d, maxDepth)}"></span>${d}m</span>`
   ).join('') + '<span class="legend-item"><span class="legend-weeds"></span>Weeds</span>';
+}
+
+// === Live Map ===
+let liveMapPointsLayer = null;
+
+async function renderLiveMap() {
+  const livePadEl = document.getElementById('live-pad');
+
+  // Render compact pad
+  renderLivePad(livePadEl);
+
+  // Initialize map if needed
+  if (!liveMap) {
+    const startLat = liveFix?.latitude || 54.5;
+    const startLon = liveFix?.longitude || -1.5;
+    liveMap = L.map('live-map').setView([startLat, startLon], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(liveMap);
+
+    // Create live marker
+    const liveIcon = L.divIcon({ className: 'live-marker', iconSize: [16, 16] });
+    liveMarker = L.marker([startLat, startLon], { icon: liveIcon }).addTo(liveMap);
+  }
+
+  // Update live marker position
+  if (liveFix) {
+    liveMarker.setLatLng([liveFix.latitude, liveFix.longitude]);
+    liveMap.setView([liveFix.latitude, liveFix.longitude], liveMap.getZoom());
+  }
+
+  // Load points
+  await updateLiveMapPoints();
+
+  // Start updating live marker
+  if (!liveMap._liveInterval) {
+    liveMap._liveInterval = setInterval(() => {
+      if (liveFix && currentScreen === 'livemap') {
+        liveMarker.setLatLng([liveFix.latitude, liveFix.longitude]);
+      }
+    }, 1000);
+  }
+
+  // Fix map size after render
+  setTimeout(() => liveMap.invalidateSize(), 100);
+}
+
+async function updateLiveMapPoints() {
+  if (!liveMap || !currentProject) return;
+
+  // Remove old points layer
+  if (liveMapPointsLayer) {
+    liveMap.removeLayer(liveMapPointsLayer);
+  }
+
+  // Fetch points from server
+  let serverRows = [];
+  try {
+    const res = await fetch(`/api/projects/${currentProject.id}/readings`);
+    const data = await res.json();
+    if (data.ok) {
+      serverRows = data.readings.map(r => ({
+        ...r,
+        coords: r.latitude ? { latitude: r.latitude, longitude: r.longitude } : null
+      }));
+    }
+  } catch (e) {}
+
+  // Get local unsynced
+  const localRows = await withStore('readonly', async (store, rp) => {
+    const req = store.getAll();
+    req.onsuccess = () => rp(req.result || []);
+  });
+  const unsynced = localRows.filter(r => !r.synced);
+
+  const allRows = [...serverRows, ...unsynced];
+  const validPoints = allRows.filter(p => p.coords);
+
+  if (validPoints.length === 0) return;
+
+  // Get max depth for color scale
+  const maxDepth = Math.max(...validPoints.map(p => p.depth), 1);
+
+  // Create points layer
+  const points = validPoints.map(p => turf.point(
+    [p.coords.longitude, p.coords.latitude],
+    { depth: p.depth, hasFish: p.hasFish }
+  ));
+  const fc = turf.featureCollection(points);
+
+  liveMapPointsLayer = L.geoJSON(fc, {
+    pointToLayer: function(feature, latlng) {
+      return L.circleMarker(latlng, {
+        radius: 6,
+        fillColor: getDepthColor(feature.properties.depth, maxDepth),
+        color: feature.properties.hasFish ? '#006400' : '#333',
+        weight: feature.properties.hasFish ? 3 : 1,
+        fillOpacity: 0.9
+      });
+    },
+    onEachFeature: function(feature, layer) {
+      const hasWeeds = feature.properties.hasFish ? ' (weeds)' : '';
+      layer.bindPopup(`${feature.properties.depth}m${hasWeeds}`);
+    }
+  }).addTo(liveMap);
+}
+
+function renderLivePad(container) {
+  container.innerHTML = '';
+  const keys = [];
+
+  if (awaitingDecimal === null) {
+    if (!highRange) {
+      for (let n=0; n<=18; n++) keys.push({ label: String(n), value: n, toggler:false });
+      keys.push({ label: '...', value: null, toggler:true });
+    } else {
+      keys.push({ label: '...', value: null, toggler:true });
+      for (let n=19; n<=40; n++) keys.push({ label: String(n), value: n, toggler:false });
+    }
+  } else {
+    for (let n=0; n<=9; n++) keys.push({ label: String(n), value: n, decimal:true });
+  }
+
+  for (const k of keys) {
+    const btn = document.createElement('button');
+    btn.className = 'key' + (k.toggler ? ' toggler' : '');
+    btn.textContent = k.label;
+    btn.addEventListener('click', async () => {
+      if (k.toggler) {
+        highRange = !highRange;
+        renderLivePad(container);
+        toast('Range ' + (highRange ? '20–40' : '0–19'));
+        return;
+      }
+      if (awaitingDecimal === null) {
+        awaitingDecimal = k.value;
+        renderLivePad(container);
+      } else {
+        const depth = Number(`${awaitingDecimal}.${k.value}`);
+        awaitingDecimal = null;
+        await logPoint(depth);
+        renderLivePad(container);
+      }
+    });
+    container.appendChild(btn);
+  }
 }
 
 let toastEl;

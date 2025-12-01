@@ -106,6 +106,14 @@ tbody tr:hover{ background: #f9fbfd; }
 .legend-swatch{ width:16px; height:12px; border-radius:2px; border:1px solid rgba(0,0,0,.15); }
 .legend-weeds{ width:12px; height:12px; border-radius:50%; background:#228B22; border:2px solid #006400; }
 
+/* Live Map screen */
+.livemap-container{ display:flex; flex-direction:column; height: calc(100vh - 160px); }
+.live-map{ flex:1; min-height:200px; border-radius:12px; overflow:hidden; border:1px solid var(--border); }
+.pad-compact{ grid-template-columns: repeat(5, minmax(0, 1fr)); gap:4px; padding:8px 0; }
+.pad-compact .key{ aspect-ratio: 1.2 / 1; font-size: clamp(12px, 4vw, 16px); border-radius:8px; }
+.pad-compact .key.toggler{ font-size: clamp(10px, 3.5vw, 14px); }
+.live-marker{ background:#ef4444; border:3px solid #fff; border-radius:50%; width:16px; height:16px; box-shadow:0 2px 6px rgba(0,0,0,.4); }
+
 @media (max-height: 680px){
   .content{ padding: 8px 10px 90px; }
   .pad{ gap: 6px; }
