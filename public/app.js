@@ -129,11 +129,11 @@ function renderPad() {
   const keys = [];
   if (awaitingDecimal === null) {
     if (!highRange) {
-      for (let n=1; n<=19; n++) keys.push({ label: String(n), value: n, toggler:false });
+      for (let n=0; n<=18; n++) keys.push({ label: String(n), value: n, toggler:false });
       keys.push({ label: '....', value: null, toggler:true });
     } else {
       keys.push({ label: '....', value: null, toggler:true });
-      for (let n=20; n<=40; n++) keys.push({ label: String(n), value: n, toggler:false });
+      for (let n=19; n<=40; n++) keys.push({ label: String(n), value: n, toggler:false });
     }
   } else {
     for (let n=1; n<=9; n++) keys.push({ label: String(n), value: n, decimal:true });
