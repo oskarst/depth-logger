@@ -40,10 +40,15 @@
         <div class="status-row">
           <span id="coord-status" class="badge">GPS: Unknown</span>
           <span id="offline-badge" class="badge secondary">Offline ready</span>
-          <button id="loc-btn" class="btn small" title="Enable GPS">Enable GPS</button>
-          <button id="sync-btn" class="btn small" title="Sync unsent entries">Sync</button>
-          <button id="export-btn" class="btn small ghost" title="Export data as JSON">Export</button>
-          <button id="import-btn" class="btn small ghost" title="Import JSON data">Import</button>
+          <div class="settings-dropdown">
+            <button id="settings-btn" class="btn small">Settings</button>
+            <div id="settings-menu" class="settings-menu hidden">
+              <button id="loc-btn" class="settings-item">Enable GPS</button>
+              <button id="sync-btn" class="settings-item">Sync Data</button>
+              <button id="export-btn" class="settings-item">Export JSON</button>
+              <button id="import-btn" class="settings-item">Import JSON</button>
+            </div>
+          </div>
           <input type="file" id="import-file-input" accept=".json" style="display:none" />
         </div>
 

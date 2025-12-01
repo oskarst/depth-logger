@@ -488,7 +488,10 @@ newProjectInput.addEventListener('keypress', (e) => {
     if (name) createProject(name);
   }
 });
-importBtn.addEventListener('click', () => importFileInput.click());
+importBtn.addEventListener('click', () => {
+  settingsMenu.classList.add('hidden');
+  importFileInput.click();
+});
 importFileInput.addEventListener('change', (e) => {
   if (e.target.files[0]) handleImport(e.target.files[0]);
 });
@@ -508,13 +511,25 @@ importFileInput.addEventListener('change', (e) => {
   }
 });
 
+// Settings dropdown toggle
+const settingsBtn = document.getElementById('settings-btn');
+const settingsMenu = document.getElementById('settings-menu');
+settingsBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  settingsMenu.classList.toggle('hidden');
+});
+document.addEventListener('click', () => settingsMenu.classList.add('hidden'));
+settingsMenu.addEventListener('click', (e) => e.stopPropagation());
+
 document.getElementById('loc-btn').addEventListener('click', async () => {
+  settingsMenu.classList.add('hidden');
   const hasPerm = await ensureGeoPermission();
   if (!hasPerm) toast('Enable location in browser settings');
   startTracking();
 });
 
 syncBtn.addEventListener('click', async () => {
+  settingsMenu.classList.add('hidden');
   if (!currentProject) {
     toast('Select a project first');
     return;
@@ -543,6 +558,7 @@ syncBtn.addEventListener('click', async () => {
 });
 
 exportBtn.addEventListener('click', async () => {
+  settingsMenu.classList.add('hidden');
   const all = await withStore('readonly', (store, rp) => rp(store.getAll()));
   const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
