@@ -57,6 +57,7 @@
             <div id="settings-menu" class="settings-menu hidden">
               <button id="loc-btn" class="settings-item">Enable GPS</button>
               <button id="sync-btn" class="settings-item">Sync Data</button>
+              <button id="water-level-btn" class="settings-item">Water Level</button>
               <button id="export-btn" class="settings-item">Export JSON</button>
               <button id="import-btn" class="settings-item">Import JSON</button>
             </div>
@@ -84,7 +85,7 @@
                 <tr>
                   <th>Time</th>
                   <th>Depth (m)</th>
-                  <th>Weeds</th>
+                  <th>Tags</th>
                   <th>Lat</th>
                   <th>Lon</th>
                   <th></th>
@@ -128,6 +129,7 @@
               <label class="layer-toggle"><input type="checkbox" id="layer-contours" checked><span>Contours</span></label>
               <label class="layer-toggle"><input type="checkbox" id="layer-points" checked><span>Points</span></label>
               <label class="layer-toggle"><input type="checkbox" id="layer-weeds" checked><span>Weeds</span></label>
+              <label class="layer-toggle"><input type="checkbox" id="layer-shore" checked><span>Shore</span></label>
               <label class="layer-toggle"><input type="checkbox" id="layer-fish" checked><span>Fish</span></label>
             </div>
           </div>
@@ -192,11 +194,91 @@
           <label for="fish-notes">Notes</label>
           <textarea id="fish-notes" rows="2" placeholder="Lure used, conditions..."></textarea>
         </div>
-        <div id="fish-location" class="fish-location"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="fish-lat">Latitude</label>
+            <input type="number" id="fish-lat" step="0.00001" placeholder="0.00000" />
+          </div>
+          <div class="form-group">
+            <label for="fish-lon">Longitude</label>
+            <input type="number" id="fish-lon" step="0.00001" placeholder="0.00000" />
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button id="fish-modal-delete" class="btn danger hidden">Delete</button>
         <button id="fish-modal-save" class="btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Water level modal -->
+  <div id="water-level-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Water Level Offset</h3>
+        <button class="modal-close" id="water-level-modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          When water level changes, measure shore depth again. If original shore was 0m and now measures 0.3m, set offset to -0.3m to adjust all depths.
+        </p>
+        <div class="form-group">
+          <label for="water-level-offset">Offset (m)</label>
+          <input type="number" id="water-level-offset" step="0.1" placeholder="0.0" />
+        </div>
+        <div id="shore-readings-info" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="water-level-modal-save" class="btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data point edit modal -->
+  <div id="reading-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Edit Data Point</h3>
+        <button class="modal-close" id="reading-modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="reading-depth">Depth (m)</label>
+          <input type="number" id="reading-depth" step="0.1" placeholder="0.0" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="reading-weeds" />
+              <span>Has Weeds</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="reading-shore" />
+              <span>Shore Line</span>
+            </label>
+          </div>
+        </div>
+        <div id="shore-warning" class="form-warning hidden">Shore points should have depth 0m</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="reading-lat">Latitude</label>
+            <input type="number" id="reading-lat" step="0.00001" placeholder="0.00000" />
+          </div>
+          <div class="form-group">
+            <label for="reading-lon">Longitude</label>
+            <input type="number" id="reading-lon" step="0.00001" placeholder="0.00000" />
+          </div>
+        </div>
+        <div id="reading-time" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="reading-modal-delete" class="btn danger">Delete</button>
+        <button id="reading-modal-save" class="btn">Save</button>
       </div>
     </div>
   </div>

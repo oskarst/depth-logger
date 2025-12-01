@@ -70,7 +70,7 @@ const dataTableBody = document.querySelector('#data-table tbody');
 let depthMap = null;
 let liveMap = null;
 let liveMarker = null;
-let mapLayers = { depth: null, contours: null, points: null, weeds: null, fish: null };
+let mapLayers = { depth: null, contours: null, points: null, weeds: null, shore: null, fish: null };
 let currentProject = null; // { id, name }
 
 let highRange = false;
@@ -183,9 +183,10 @@ async function handleImport(file) {
 }
 
 function selectProject(project) {
-  currentProject = project;
+  currentProject = { ...project, waterLevelOffset: project.waterLevelOffset || 0 };
   localStorage.setItem('currentProjectId', project.id);
   localStorage.setItem('currentProjectName', project.name);
+  localStorage.setItem('currentProjectOffset', project.waterLevelOffset || 0);
   projectBadge.textContent = project.name;
   showScreen('logger');
 }
@@ -285,11 +286,14 @@ function renderPad() {
   const keys = [];
   if (awaitingDecimal === null) {
     if (!highRange) {
-      for (let n=0; n<=18; n++) keys.push({ label: String(n), value: n, toggler:false });
+      // shore, 0-17, toggler (20 keys for 5x4 grid)
+      keys.push({ label: 'Shore', value: null, shore:true });
+      for (let n=0; n<=17; n++) keys.push({ label: String(n), value: n, toggler:false });
       keys.push({ label: '....', value: null, toggler:true });
     } else {
+      // toggler, 18-40 (24 keys for 6x4 grid)
       keys.push({ label: '....', value: null, toggler:true });
-      for (let n=19; n<=40; n++) keys.push({ label: String(n), value: n, toggler:false });
+      for (let n=18; n<=40; n++) keys.push({ label: String(n), value: n, toggler:false });
     }
   } else {
     for (let n=1; n<=9; n++) keys.push({ label: String(n), value: n, decimal:true });
@@ -298,7 +302,7 @@ function renderPad() {
   }
   for (const k of keys) {
     const btn = document.createElement('button');
-    btn.className = 'key' + (k.toggler ? ' toggler' : '') + (k.cancel ? ' cancel' : '');
+    btn.className = 'key' + (k.toggler ? ' toggler' : '') + (k.cancel ? ' cancel' : '') + (k.shore ? ' shore' : '');
     btn.textContent = k.label;
     btn.addEventListener('click', async () => {
       if (k.cancel) {
@@ -307,10 +311,16 @@ function renderPad() {
         toast('Cancelled');
         return;
       }
+      if (k.shore) {
+        // Record shore line at current location with depth 0
+        await logPoint(0, true);
+        toast('Shore line marked 🏖️');
+        return;
+      }
       if (k.toggler) {
         highRange = !highRange;
         renderPad();
-        toast('Range ' + (highRange ? '20–40' : '1–19'));
+        toast('Range ' + (highRange ? '18–40' : '0–17'));
         return;
       }
       if (awaitingDecimal === null) {
@@ -341,7 +351,7 @@ async function getFreshLiveOrWait(maxWaitMs=3000){
   });
 }
 
-async function logPoint(depth) {
+async function logPoint(depth, isShore = false) {
   if (!(await ensureGeoPermission())) {
     toast('Enable location in settings');
   }
@@ -352,6 +362,7 @@ async function logPoint(depth) {
     coords: fix ? { latitude: fix.latitude, longitude: fix.longitude, accuracy: fix.accuracy } : null,
     hasWeeds: false,
     hasFish: false,
+    isShore: isShore,
     createdAt: Date.now(),
     synced: false
   };
@@ -404,10 +415,11 @@ async function renderDataTable(){
     const lat = r.coords ? r.coords.latitude.toFixed(5) : '';
     const lon = r.coords ? r.coords.longitude.toFixed(5) : '';
     const synced = r.isLocal ? ' (local)' : '';
+    const markers = (r.isShore ? '🏖️' : '') + (r.hasWeeds ? '🌿' : '');
     tr.innerHTML = `
       <td>${t}${synced}</td>
       <td>${Number(r.depth).toFixed(1)}</td>
-      <td>${r.hasWeeds?'🌿':''}</td>
+      <td>${markers}</td>
       <td>${lat}</td>
       <td>${lon}</td>
       <td class="row-actions">
@@ -489,36 +501,117 @@ async function deleteReadingEntry(reading) {
   }
 }
 
-function editReading(reading) {
-  const newDepth = prompt('Edit depth (m):', reading.depth);
-  if (newDepth === null) return;
-  const depth = parseFloat(newDepth);
+// Reading edit modal handling
+const readingModal = $('#reading-modal');
+const readingModalClose = $('#reading-modal-close');
+const readingModalSave = $('#reading-modal-save');
+const readingModalDelete = $('#reading-modal-delete');
+const readingDepthInput = $('#reading-depth');
+const readingWeedsInput = $('#reading-weeds');
+const readingShoreInput = $('#reading-shore');
+const readingLatInput = $('#reading-lat');
+const readingLonInput = $('#reading-lon');
+const readingTimeEl = $('#reading-time');
+const shoreWarningEl = $('#shore-warning');
+let editingReading = null;
+
+function openReadingModal(reading) {
+  editingReading = reading;
+
+  readingDepthInput.value = reading.depth;
+  readingWeedsInput.checked = reading.hasWeeds || false;
+  readingShoreInput.checked = reading.isShore || false;
+  readingLatInput.value = reading.coords?.latitude || '';
+  readingLonInput.value = reading.coords?.longitude || '';
+  readingTimeEl.textContent = `Recorded: ${new Date(reading.createdAt).toLocaleString()}`;
+
+  // Update shore warning visibility
+  updateShoreWarning();
+
+  readingModal.classList.remove('hidden');
+}
+
+function closeReadingModal() {
+  readingModal.classList.add('hidden');
+  editingReading = null;
+}
+
+function updateShoreWarning() {
+  const depth = parseFloat(readingDepthInput.value) || 0;
+  const isShore = readingShoreInput.checked;
+  shoreWarningEl.classList.toggle('hidden', !isShore || depth === 0);
+}
+
+readingModalClose.addEventListener('click', closeReadingModal);
+readingModal.querySelector('.modal-backdrop').addEventListener('click', closeReadingModal);
+readingDepthInput.addEventListener('input', updateShoreWarning);
+readingShoreInput.addEventListener('change', updateShoreWarning);
+
+readingModalSave.addEventListener('click', async () => {
+  if (!editingReading) return;
+
+  const depth = parseFloat(readingDepthInput.value);
   if (isNaN(depth)) {
     toast('Invalid depth');
     return;
   }
-  const hasWeeds = confirm('Has weeds?');
-  updateReadingEntry(reading, depth, hasWeeds);
-}
 
-async function updateReadingEntry(reading, depth, hasWeeds) {
+  const hasWeeds = readingWeedsInput.checked;
+  const isShore = readingShoreInput.checked;
+  const latitude = readingLatInput.value ? parseFloat(readingLatInput.value) : null;
+  const longitude = readingLonInput.value ? parseFloat(readingLonInput.value) : null;
+
+  // Warn if shore is checked but depth is not 0
+  if (isShore && depth !== 0) {
+    if (!confirm('Shore points should have depth 0m. Save anyway?')) {
+      return;
+    }
+  }
+
   try {
-    if (reading.isServer) {
-      await fetch(`/api/readings/${reading.id}`, {
+    if (editingReading.isServer) {
+      await fetch(`/api/readings/${editingReading.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ depth, hasWeeds, hasFish: reading.hasFish || false })
+        body: JSON.stringify({ depth, hasWeeds, hasFish: false, isShore, latitude, longitude })
       });
-    } else if (reading.isLocal) {
-      reading.depth = depth;
-      reading.hasWeeds = hasWeeds;
-      await withStore('readwrite', (store) => store.put(reading));
+    } else if (editingReading.isLocal) {
+      editingReading.depth = depth;
+      editingReading.hasWeeds = hasWeeds;
+      editingReading.isShore = isShore;
+      if (latitude !== null && longitude !== null) {
+        editingReading.coords = { latitude, longitude, accuracy: editingReading.coords?.accuracy };
+      }
+      await withStore('readwrite', (store) => store.put(editingReading));
     }
+    closeReadingModal();
     renderDataTable();
     toast('Reading updated');
   } catch (e) {
     toast('Failed to update');
   }
+});
+
+readingModalDelete.addEventListener('click', async () => {
+  if (!editingReading) return;
+  if (!confirm('Delete this reading?')) return;
+
+  try {
+    if (editingReading.isServer) {
+      await fetch(`/api/readings/${editingReading.id}`, { method: 'DELETE' });
+    } else if (editingReading.isLocal) {
+      await withStore('readwrite', (store) => store.delete(editingReading.id));
+    }
+    closeReadingModal();
+    renderDataTable();
+    toast('Reading deleted');
+  } catch (e) {
+    toast('Failed to delete');
+  }
+});
+
+function editReading(reading) {
+  openReadingModal(reading);
 }
 
 weedsBtn.addEventListener('click', async () => {
@@ -542,9 +635,9 @@ const fishTypeInput = $('#fish-type');
 const fishWeightInput = $('#fish-weight');
 const fishLengthInput = $('#fish-length');
 const fishNotesInput = $('#fish-notes');
-const fishLocationEl = $('#fish-location');
+const fishLatInput = $('#fish-lat');
+const fishLonInput = $('#fish-lon');
 let editingFishId = null;
-let fishCatchCoords = null;
 
 function openFishModal(fishCatch = null) {
   editingFishId = fishCatch?.id || null;
@@ -557,14 +650,14 @@ function openFishModal(fishCatch = null) {
   fishNotesInput.value = fishCatch?.notes || '';
 
   if (fishCatch && fishCatch.latitude) {
-    fishCatchCoords = { latitude: fishCatch.latitude, longitude: fishCatch.longitude, accuracy: fishCatch.accuracy };
-    fishLocationEl.textContent = `📍 ${fishCatch.latitude.toFixed(5)}, ${fishCatch.longitude.toFixed(5)}`;
+    fishLatInput.value = fishCatch.latitude;
+    fishLonInput.value = fishCatch.longitude;
   } else if (liveFix) {
-    fishCatchCoords = { latitude: liveFix.latitude, longitude: liveFix.longitude, accuracy: liveFix.accuracy };
-    fishLocationEl.textContent = `📍 ${liveFix.latitude.toFixed(5)}, ${liveFix.longitude.toFixed(5)}`;
+    fishLatInput.value = liveFix.latitude;
+    fishLonInput.value = liveFix.longitude;
   } else {
-    fishCatchCoords = null;
-    fishLocationEl.textContent = 'GPS location will be captured';
+    fishLatInput.value = '';
+    fishLonInput.value = '';
   }
 
   fishModal.classList.remove('hidden');
@@ -573,7 +666,6 @@ function openFishModal(fishCatch = null) {
 function closeFishModal() {
   fishModal.classList.add('hidden');
   editingFishId = null;
-  fishCatchCoords = null;
 }
 
 fishModalClose.addEventListener('click', closeFishModal);
@@ -590,9 +682,9 @@ fishModalSave.addEventListener('click', async () => {
     weight: fishWeightInput.value ? parseFloat(fishWeightInput.value) : null,
     length: fishLengthInput.value ? parseFloat(fishLengthInput.value) : null,
     notes: fishNotesInput.value.trim(),
-    latitude: fishCatchCoords?.latitude || null,
-    longitude: fishCatchCoords?.longitude || null,
-    accuracy: fishCatchCoords?.accuracy || null
+    latitude: fishLatInput.value ? parseFloat(fishLatInput.value) : null,
+    longitude: fishLonInput.value ? parseFloat(fishLonInput.value) : null,
+    accuracy: null
   };
 
   try {
@@ -639,6 +731,69 @@ fishBtn.addEventListener('click', () => {
   openFishModal();
 });
 
+// Water level modal handling
+const waterLevelModal = document.getElementById('water-level-modal');
+const waterLevelModalClose = document.getElementById('water-level-modal-close');
+const waterLevelModalSave = document.getElementById('water-level-modal-save');
+const waterLevelOffsetInput = document.getElementById('water-level-offset');
+const shoreReadingsInfo = document.getElementById('shore-readings-info');
+const waterLevelBtn = document.getElementById('water-level-btn');
+
+async function openWaterLevelModal() {
+  if (!currentProject) {
+    toast('Select a project first');
+    return;
+  }
+  // Load current offset
+  waterLevelOffsetInput.value = currentProject.waterLevelOffset || 0;
+
+  // Load shore readings info
+  try {
+    const res = await fetch(`/api/projects/${currentProject.id}/shore`);
+    const data = await res.json();
+    if (data.ok && data.shores.length > 0) {
+      const latest = data.shores[0];
+      const date = new Date(latest.createdAt).toLocaleDateString();
+      shoreReadingsInfo.textContent = `${data.shores.length} shore point(s). Latest: ${date}`;
+    } else {
+      shoreReadingsInfo.textContent = 'No shore points recorded yet.';
+    }
+  } catch (e) {
+    shoreReadingsInfo.textContent = '';
+  }
+
+  waterLevelModal.classList.remove('hidden');
+}
+
+function closeWaterLevelModal() {
+  waterLevelModal.classList.add('hidden');
+}
+
+waterLevelModalClose.addEventListener('click', closeWaterLevelModal);
+waterLevelModal.querySelector('.modal-backdrop').addEventListener('click', closeWaterLevelModal);
+
+waterLevelModalSave.addEventListener('click', async () => {
+  if (!currentProject) return;
+  const offset = parseFloat(waterLevelOffsetInput.value) || 0;
+  try {
+    await fetch(`/api/projects/${currentProject.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ waterLevelOffset: offset })
+    });
+    currentProject.waterLevelOffset = offset;
+    toast(`Water level offset set to ${offset}m`);
+    closeWaterLevelModal();
+  } catch (e) {
+    toast('Failed to save');
+  }
+});
+
+waterLevelBtn.addEventListener('click', () => {
+  settingsMenu.classList.add('hidden');
+  openWaterLevelModal();
+});
+
 dataBtn.addEventListener('click', () => showScreen(currentScreen === 'data' ? 'logger' : 'data'));
 mapBtn.addEventListener('click', () => showScreen(currentScreen === 'map' ? 'logger' : 'map'));
 livemapBtn.addEventListener('click', () => showScreen(currentScreen === 'livemap' ? 'logger' : 'livemap'));
@@ -662,7 +817,7 @@ importFileInput.addEventListener('change', (e) => {
 });
 
 // Layer visibility toggles
-['depth', 'contours', 'points', 'weeds', 'fish'].forEach(name => {
+['depth', 'contours', 'points', 'weeds', 'shore', 'fish'].forEach(name => {
   const checkbox = document.getElementById('layer-' + name);
   if (checkbox) {
     checkbox.addEventListener('change', () => {
@@ -931,11 +1086,36 @@ async function renderDepthMap() {
     mapLayers.weeds = cloudLayer.addTo(depthMap);
   }
 
+  // Add shore line markers
+  const shorePoints = validPoints.filter(p => p.isShore);
+  mapLayers.shore = null;
+  if (shorePoints.length > 0) {
+    const shoreFc = turf.featureCollection(
+      shorePoints.map(p => turf.point([p.coords.longitude, p.coords.latitude], { createdAt: p.createdAt }))
+    );
+    mapLayers.shore = L.geoJSON(shoreFc, {
+      pointToLayer: function(feature, latlng) {
+        return L.marker(latlng, {
+          icon: L.divIcon({
+            className: 'shore-map-marker',
+            html: '🏖️',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          })
+        });
+      },
+      onEachFeature: function(feature, layer) {
+        const date = new Date(feature.properties.createdAt).toLocaleDateString();
+        layer.bindPopup(`Shore line (${date})`);
+      }
+    }).addTo(depthMap);
+  }
+
   // Fit bounds
   depthMap.fitBounds(mapLayers.depth.getBounds(), { padding: [30, 30] });
 
   // Sync layer visibility with checkboxes
-  ['depth', 'contours', 'points', 'weeds'].forEach(name => {
+  ['depth', 'contours', 'points', 'weeds', 'shore'].forEach(name => {
     const checkbox = document.getElementById('layer-' + name);
     if (checkbox && mapLayers[name]) {
       if (!checkbox.checked) depthMap.removeLayer(mapLayers[name]);
@@ -994,6 +1174,7 @@ async function renderDepthMap() {
   legendEl.innerHTML = depths.map(d =>
     `<span class="legend-item"><span class="legend-swatch" style="background:${getDepthColor(d, maxDepth)}"></span>${d}m</span>`
   ).join('') + '<span class="legend-item"><span class="legend-weeds"></span>Weeds</span>' +
+  '<span class="legend-item"><span class="legend-fish">🏖️</span>Shore</span>' +
   '<span class="legend-item"><span class="legend-fish">🐟</span>Fish</span>';
 }
 
@@ -1167,11 +1348,12 @@ function renderLivePad(container) {
 
   if (awaitingDecimal === null) {
     if (!highRange) {
-      for (let n=0; n<=18; n++) keys.push({ label: String(n), value: n, toggler:false });
+      keys.push({ label: 'Shore', value: null, shore:true });
+      for (let n=0; n<=17; n++) keys.push({ label: String(n), value: n, toggler:false });
       keys.push({ label: '...', value: null, toggler:true });
     } else {
       keys.push({ label: '...', value: null, toggler:true });
-      for (let n=19; n<=40; n++) keys.push({ label: String(n), value: n, toggler:false });
+      for (let n=18; n<=40; n++) keys.push({ label: String(n), value: n, toggler:false });
     }
   } else {
     for (let n=0; n<=9; n++) keys.push({ label: String(n), value: n, decimal:true });
@@ -1180,7 +1362,7 @@ function renderLivePad(container) {
 
   for (const k of keys) {
     const btn = document.createElement('button');
-    btn.className = 'key' + (k.toggler ? ' toggler' : '') + (k.cancel ? ' cancel' : '');
+    btn.className = 'key' + (k.toggler ? ' toggler' : '') + (k.cancel ? ' cancel' : '') + (k.shore ? ' shore' : '');
     btn.textContent = k.label;
     btn.addEventListener('click', async () => {
       if (k.cancel) {
@@ -1189,10 +1371,15 @@ function renderLivePad(container) {
         toast('Cancelled');
         return;
       }
+      if (k.shore) {
+        await logPoint(0, true);
+        toast('Shore line marked 🏖️');
+        return;
+      }
       if (k.toggler) {
         highRange = !highRange;
         renderLivePad(container);
-        toast('Range ' + (highRange ? '20–40' : '0–19'));
+        toast('Range ' + (highRange ? '18–40' : '0–17'));
         return;
       }
       if (awaitingDecimal === null) {
@@ -1230,8 +1417,9 @@ function toast(msg){
   // Check for saved project
   const savedProjectId = localStorage.getItem('currentProjectId');
   const savedProjectName = localStorage.getItem('currentProjectName');
+  const savedProjectOffset = parseFloat(localStorage.getItem('currentProjectOffset')) || 0;
   if (savedProjectId && savedProjectName) {
-    currentProject = { id: parseInt(savedProjectId), name: savedProjectName };
+    currentProject = { id: parseInt(savedProjectId), name: savedProjectName, waterLevelOffset: savedProjectOffset };
     projectBadge.textContent = savedProjectName;
     showScreen('logger');
   } else {

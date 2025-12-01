@@ -40,8 +40,22 @@ try {
     // Migrate existing has_fish data to has_weeds (old fish was actually weeds)
     db.exec(`UPDATE readings SET has_weeds = has_fish, has_fish = 0`);
   }
+  // Add is_shore column for shore line markers
+  if (!cols.includes('is_shore')) {
+    db.exec(`ALTER TABLE readings ADD COLUMN is_shore INTEGER DEFAULT 0`);
+  }
 } catch (e) {
   console.log('Migration check:', e.message);
+}
+
+// Migration: add water_level_offset to projects
+try {
+  const projCols = db.pragma('table_info(projects)').map(c => c.name);
+  if (!projCols.includes('water_level_offset')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN water_level_offset REAL DEFAULT 0`);
+  }
+} catch (e) {
+  console.log('Projects migration check:', e.message);
 }
 
 // Fish catches table
@@ -68,13 +82,14 @@ db.exec(`CREATE INDEX IF NOT EXISTS idx_created ON readings(created_at)`);
 const insertProject = db.prepare(`INSERT INTO projects (name, created_at) VALUES (?, ?)`);
 const deleteProject = db.prepare(`DELETE FROM projects WHERE id = ?`);
 const deleteProjectReadings = db.prepare(`DELETE FROM readings WHERE project_id = ?`);
-const getAllProjects = db.prepare(`SELECT id, name, created_at as createdAt FROM projects ORDER BY name`);
-const getProjectById = db.prepare(`SELECT id, name FROM projects WHERE id = ?`);
+const getAllProjects = db.prepare(`SELECT id, name, created_at as createdAt, water_level_offset as waterLevelOffset FROM projects ORDER BY name`);
+const getProjectById = db.prepare(`SELECT id, name, water_level_offset as waterLevelOffset FROM projects WHERE id = ?`);
+const updateProjectOffset = db.prepare(`UPDATE projects SET water_level_offset = ? WHERE id = ?`);
 
 // Prepared statements - Readings
 const insertReading = db.prepare(`
-  INSERT INTO readings (project_id, depth, latitude, longitude, accuracy, has_weeds, has_fish, created_at)
-  VALUES (@projectId, @depth, @latitude, @longitude, @accuracy, @hasWeeds, @hasFish, @createdAt)
+  INSERT INTO readings (project_id, depth, latitude, longitude, accuracy, has_weeds, has_fish, is_shore, created_at)
+  VALUES (@projectId, @depth, @latitude, @longitude, @accuracy, @hasWeeds, @hasFish, @isShore, @createdAt)
 `);
 
 const insertMany = db.transaction((readings, projectId) => {
@@ -87,14 +102,20 @@ const insertMany = db.transaction((readings, projectId) => {
       accuracy: r.coords?.accuracy || null,
       hasWeeds: r.hasWeeds ? 1 : 0,
       hasFish: r.hasFish ? 1 : 0,
+      isShore: r.isShore ? 1 : 0,
       createdAt: r.createdAt
     });
   }
 });
 
 const getReadings = db.prepare(`
-  SELECT id, depth, latitude, longitude, accuracy, has_weeds as hasWeeds, has_fish as hasFish, created_at as createdAt
+  SELECT id, depth, latitude, longitude, accuracy, has_weeds as hasWeeds, has_fish as hasFish, is_shore as isShore, created_at as createdAt
   FROM readings WHERE project_id = ? ORDER BY created_at DESC
+`);
+
+const getShoreReadings = db.prepare(`
+  SELECT id, depth, latitude, longitude, created_at as createdAt
+  FROM readings WHERE project_id = ? AND is_shore = 1 ORDER BY created_at DESC
 `);
 
 const getReadingsCount = db.prepare(`SELECT COUNT(*) as count FROM readings WHERE project_id = ?`);
@@ -107,7 +128,7 @@ const deleteProjectWithReadings = db.transaction((projectId) => {
 
 const clearProjectReadings = db.prepare(`DELETE FROM readings WHERE project_id = ?`);
 const deleteReading = db.prepare(`DELETE FROM readings WHERE id = ?`);
-const updateReading = db.prepare(`UPDATE readings SET depth = ?, has_weeds = ?, has_fish = ? WHERE id = ?`);
+const updateReading = db.prepare(`UPDATE readings SET depth = ?, has_weeds = ?, has_fish = ?, is_shore = ?, latitude = ?, longitude = ? WHERE id = ?`);
 const checkDuplicateCoords = db.prepare(`SELECT COUNT(*) as count FROM readings WHERE project_id = ? AND latitude = ? AND longitude = ?`);
 
 // Prepared statements - Fish catches
@@ -120,7 +141,7 @@ const getFishCatches = db.prepare(`
   FROM fish_catches WHERE project_id = ? ORDER BY created_at DESC
 `);
 const getFishCatchesCount = db.prepare(`SELECT COUNT(*) as count FROM fish_catches WHERE project_id = ?`);
-const updateFishCatch = db.prepare(`UPDATE fish_catches SET fish_type = ?, weight = ?, length = ?, notes = ? WHERE id = ?`);
+const updateFishCatch = db.prepare(`UPDATE fish_catches SET fish_type = ?, weight = ?, length = ?, notes = ?, latitude = ?, longitude = ? WHERE id = ?`);
 const deleteFishCatch = db.prepare(`DELETE FROM fish_catches WHERE id = ?`);
 const deleteProjectFishCatches = db.prepare(`DELETE FROM fish_catches WHERE project_id = ?`);
 
@@ -239,13 +260,42 @@ app.delete('/api/readings/:id', (req, res) => {
 // Update single reading
 app.patch('/api/readings/:id', (req, res) => {
   const id = parseInt(req.params.id);
-  const { depth, hasWeeds, hasFish } = req.body;
+  const { depth, hasWeeds, hasFish, isShore, latitude, longitude } = req.body;
   if (!id) {
     return res.status(400).json({ ok: false, error: 'Invalid reading id' });
   }
   try {
-    updateReading.run(depth, hasWeeds ? 1 : 0, hasFish ? 1 : 0, id);
+    updateReading.run(depth, hasWeeds ? 1 : 0, hasFish ? 1 : 0, isShore ? 1 : 0, latitude || null, longitude || null, id);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Update project water level offset
+app.patch('/api/projects/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  const { waterLevelOffset } = req.body;
+  if (!id) {
+    return res.status(400).json({ ok: false, error: 'Invalid project id' });
+  }
+  try {
+    updateProjectOffset.run(waterLevelOffset || 0, id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Get shore line readings for a project
+app.get('/api/projects/:id/shore', (req, res) => {
+  const projectId = parseInt(req.params.id);
+  if (!projectId) {
+    return res.status(400).json({ ok: false, error: 'Invalid project id' });
+  }
+  try {
+    const rows = getShoreReadings.all(projectId);
+    res.json({ ok: true, shores: rows });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -295,12 +345,12 @@ app.post('/api/projects/:id/fish', (req, res) => {
 // Update fish catch
 app.patch('/api/fish/:id', (req, res) => {
   const id = parseInt(req.params.id);
-  const { fishType, weight, length, notes } = req.body;
+  const { fishType, weight, length, notes, latitude, longitude } = req.body;
   if (!id) {
     return res.status(400).json({ ok: false, error: 'Invalid fish catch id' });
   }
   try {
-    updateFishCatch.run(fishType || null, weight || null, length || null, notes || null, id);
+    updateFishCatch.run(fishType || null, weight || null, length || null, notes || null, latitude || null, longitude || null, id);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
