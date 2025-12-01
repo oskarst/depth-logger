@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lake Logger</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#f7fafc">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js'));
+    }
+  </script>
+</head>
+<body>
+  <div class="app-shell light">
+    <header class="topbar">
+      <div id="last-saved" class="last-saved" aria-live="polite">Last saved: —</div>
+      <div id="live-line" class="live-line">Live: waiting for GPS…</div>
+    </header>
+
+    <main class="content">
+      <div class="status-row">
+        <span id="coord-status" class="badge">GPS: Unknown</span>
+        <span id="offline-badge" class="badge secondary">Offline ready</span>
+        <button id="loc-btn" class="btn small" title="Enable GPS">Enable GPS</button>
+        <button id="sync-btn" class="btn small" title="Sync unsent entries">Sync</button>
+        <button id="export-btn" class="btn small ghost" title="Export data as JSON">Export</button>
+      </div>
+
+      <!-- LOGGER SCREEN -->
+      <section id="screen-logger" class="screen active">
+        <div id="pad" class="pad"></div>
+      </section>
+
+      <!-- DATA SCREEN -->
+      <section id="screen-data" class="screen">
+        <div class="data-wrap">
+          <div class="map-header data-header">
+            <div class="map-title">Data Points</div>
+            <div class="data-actions">
+              <button id="clear-btn" class="btn small danger" title="Clear all data">Clear</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="data-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Depth (m)</th>
+                  <th>Fish</th>
+                  <th>Lat</th>
+                  <th>Lon</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- MAP SCREEN -->
+      <section id="screen-map" class="screen">
+        <div class="map-wrap">
+          <div class="map-header">
+            <div class="map-title">Depth Map</div>
+            <div class="map-legend" id="map-legend"></div>
+          </div>
+          <div id="depth-map"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bottombar">
+      <button id="fish-btn" class="fish-btn" title="Tag last point as Has Fish" aria-label="Has Fish">🐟</button>
+      <button id="map-btn" class="map-btn" title="Open depth map">🗺️</button>
+      <button id="data-btn" class="map-btn" title="Open data">📋</button>
+    </footer>
+  </div>
+
+  <template id="entry-pill-tpl">
+    <div class="pill"></div>
+  </template>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
