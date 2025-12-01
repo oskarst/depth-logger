@@ -64,8 +64,10 @@ tbody tr:hover{ background: #f9fbfd; }
 .key:active{ transform: translateY(1px) scale(.99); filter: brightness(.98); box-shadow: 0 4px 10px rgba(15,23,42,.08) inset; }
 
 .bottombar{ position: fixed; bottom: 0; left: 0; right:0; display:flex; align-items:center; justify-content:space-between; background: linear-gradient(0deg, rgba(255,255,255,.95), rgba(255,255,255,.85)); backdrop-filter: blur(6px); padding: 12px 16px 20px; border-top: 1px solid var(--border); }
-.bottombar-left{ display:flex; align-items:center; gap:8px; }
+.bottombar-left{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
 .bottombar-project{ font-weight:600; font-size:13px; color: var(--accent-2); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bottombar-change{ background:none; border:none; color:var(--muted); font-size:11px; padding:0; cursor:pointer; text-decoration:underline; }
+.bottombar-change:hover{ color:var(--accent); }
 .bottombar-right{ display:flex; gap:10px; }
 .weeds-btn, .fish-btn, .map-btn{
   width:52px; height:52px; border-radius: 14px;
