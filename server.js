@@ -73,6 +73,8 @@ const deleteProjectWithReadings = db.transaction((projectId) => {
   deleteProject.run(projectId);
 });
 
+const clearProjectReadings = db.prepare(`DELETE FROM readings WHERE project_id = ?`);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -152,6 +154,20 @@ app.get('/api/projects/:id/readings', (req, res) => {
   try {
     const rows = getReadings.all(projectId);
     res.json({ ok: true, readings: rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Clear all readings for a project
+app.delete('/api/projects/:id/readings', (req, res) => {
+  const projectId = parseInt(req.params.id);
+  if (!projectId) {
+    return res.status(400).json({ ok: false, error: 'Invalid project id' });
+  }
+  try {
+    const result = clearProjectReadings.run(projectId);
+    res.json({ ok: true, deleted: result.changes });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

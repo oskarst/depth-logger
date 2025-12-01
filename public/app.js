@@ -469,8 +469,20 @@ exportBtn.addEventListener('click', async () => {
 window.addEventListener('DOMContentLoaded', () => {
   const clearBtn = document.getElementById('clear-btn');
   clearBtn?.addEventListener('click', async () => {
-    if (!confirm('Clear ALL saved points? This cannot be undone.')) return;
+    if (!confirm('Clear ALL saved points for this project? This cannot be undone.')) return;
+
+    // Clear local IndexedDB
     await withStore('readwrite', (store, rp) => rp(store.clear()));
+
+    // Clear server data for current project
+    if (currentProject) {
+      try {
+        await fetch(`/api/projects/${currentProject.id}/readings`, { method: 'DELETE' });
+      } catch (e) {
+        console.error('Failed to clear server data', e);
+      }
+    }
+
     lastSavedPoint = null;
     updateLastSavedUI();
     if (currentScreen === 'data') renderDataTable();
