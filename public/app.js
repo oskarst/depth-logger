@@ -882,24 +882,61 @@ async function renderDepthMap() {
     }
   }).addTo(depthMap);
 
-  // Add weeds overlay
+  // Add weeds cloud overlay
   mapLayers.weeds = null;
   if (weedPoints.length > 0) {
     const weedsFc = turf.featureCollection(weedPoints);
-    mapLayers.weeds = L.geoJSON(weedsFc, {
+
+    // Create buffered circles around each weed point (radius in km, ~15m)
+    const buffered = weedPoints.map(p => turf.buffer(p, 0.015, { units: 'kilometers' }));
+
+    // Try to union/dissolve overlapping buffers into a cloud
+    let weedCloud;
+    try {
+      if (buffered.length === 1) {
+        weedCloud = buffered[0];
+      } else {
+        weedCloud = buffered.reduce((acc, buf) => {
+          try {
+            return turf.union(acc, buf);
+          } catch (e) {
+            return acc;
+          }
+        });
+      }
+    } catch (e) {
+      weedCloud = turf.featureCollection(buffered);
+    }
+
+    // Add the cloud polygon layer
+    const cloudLayer = L.geoJSON(weedCloud, {
+      style: {
+        fillColor: '#228B22',
+        fillOpacity: 0.35,
+        color: '#006400',
+        weight: 1.5,
+        opacity: 0.6,
+        dashArray: '4,4'
+      }
+    });
+
+    // Add individual weed markers on top
+    const markersLayer = L.geoJSON(weedsFc, {
       pointToLayer: function(feature, latlng) {
         return L.circleMarker(latlng, {
-          radius: 8,
+          radius: 5,
           fillColor: '#228B22',
           color: '#006400',
           weight: 2,
-          fillOpacity: 0.6
+          fillOpacity: 0.8
         });
       },
       onEachFeature: function(feature, layer) {
         layer.bindPopup(`Weeds at ${feature.properties.depth}m`);
       }
-    }).addTo(depthMap);
+    });
+
+    mapLayers.weeds = L.layerGroup([cloudLayer, markersLayer]).addTo(depthMap);
   }
 
   // Fit bounds
@@ -1062,8 +1099,8 @@ async function updateLiveMapPoints() {
       return L.circleMarker(latlng, {
         radius: 6,
         fillColor: getDepthColor(feature.properties.depth, maxDepth),
-        color: feature.properties.hasWeeds ? '#006400' : '#333',
-        weight: feature.properties.hasWeeds ? 3 : 1,
+        color: '#333',
+        weight: 1,
         fillOpacity: 0.9
       });
     },
@@ -1072,6 +1109,28 @@ async function updateLiveMapPoints() {
       layer.bindPopup(`${feature.properties.depth}m${hasWeeds}`);
     }
   }).addTo(liveMap);
+
+  // Add weeds cloud to live map
+  const weedPoints = validPoints.filter(p => p.hasWeeds);
+  if (weedPoints.length > 0) {
+    const weedTurfPoints = weedPoints.map(p => turf.point([p.coords.longitude, p.coords.latitude]));
+    const buffered = weedTurfPoints.map(p => turf.buffer(p, 0.015, { units: 'kilometers' }));
+    let weedCloud;
+    try {
+      if (buffered.length === 1) {
+        weedCloud = buffered[0];
+      } else {
+        weedCloud = buffered.reduce((acc, buf) => {
+          try { return turf.union(acc, buf); } catch (e) { return acc; }
+        });
+      }
+    } catch (e) {
+      weedCloud = turf.featureCollection(buffered);
+    }
+    L.geoJSON(weedCloud, {
+      style: { fillColor: '#228B22', fillOpacity: 0.35, color: '#006400', weight: 1, opacity: 0.5 }
+    }).addTo(liveMap);
+  }
 
   // Add fish catches to live map
   if (currentProject) {
