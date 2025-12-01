@@ -887,8 +887,8 @@ async function renderDepthMap() {
   if (weedPoints.length > 0) {
     const weedsFc = turf.featureCollection(weedPoints);
 
-    // Create buffered circles around each weed point (radius in km, ~15m)
-    const buffered = weedPoints.map(p => turf.buffer(p, 0.015, { units: 'kilometers' }));
+    // Create buffered circles around each weed point (radius in km, ~10m)
+    const buffered = weedPoints.map(p => turf.buffer(p, 0.010, { units: 'kilometers' }));
 
     // Try to union/dissolve overlapping buffers into a cloud
     let weedCloud;
@@ -908,15 +908,15 @@ async function renderDepthMap() {
       weedCloud = turf.featureCollection(buffered);
     }
 
-    // Add the cloud polygon layer
+    // Add the cloud polygon layer with blur effect
     const cloudLayer = L.geoJSON(weedCloud, {
       style: {
         fillColor: '#228B22',
-        fillOpacity: 0.35,
-        color: '#006400',
-        weight: 1.5,
-        opacity: 0.6,
-        dashArray: '4,4'
+        fillOpacity: 0.4,
+        color: '#228B22',
+        weight: 0,
+        opacity: 0,
+        className: 'weed-cloud-blur'
       }
     });
 
@@ -1114,7 +1114,7 @@ async function updateLiveMapPoints() {
   const weedPoints = validPoints.filter(p => p.hasWeeds);
   if (weedPoints.length > 0) {
     const weedTurfPoints = weedPoints.map(p => turf.point([p.coords.longitude, p.coords.latitude]));
-    const buffered = weedTurfPoints.map(p => turf.buffer(p, 0.015, { units: 'kilometers' }));
+    const buffered = weedTurfPoints.map(p => turf.buffer(p, 0.010, { units: 'kilometers' }));
     let weedCloud;
     try {
       if (buffered.length === 1) {
@@ -1128,7 +1128,7 @@ async function updateLiveMapPoints() {
       weedCloud = turf.featureCollection(buffered);
     }
     L.geoJSON(weedCloud, {
-      style: { fillColor: '#228B22', fillOpacity: 0.35, color: '#006400', weight: 1, opacity: 0.5 }
+      style: { fillColor: '#228B22', fillOpacity: 0.4, color: '#228B22', weight: 0, className: 'weed-cloud-blur' }
     }).addTo(liveMap);
   }
 
