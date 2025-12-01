@@ -353,7 +353,29 @@ function updateLastSavedUI(){
 }
 
 async function renderDataTable(){
-  const rows = await withStore('readonly', (store, rp) => rp(store.getAll()));
+  let rows = [];
+
+  // Fetch from server if project selected
+  if (currentProject) {
+    try {
+      const res = await fetch(`/api/projects/${currentProject.id}/readings`);
+      const data = await res.json();
+      if (data.ok) {
+        rows = data.readings.map(r => ({
+          ...r,
+          coords: r.latitude ? { latitude: r.latitude, longitude: r.longitude, accuracy: r.accuracy } : null
+        }));
+      }
+    } catch (e) {
+      console.error('Failed to fetch readings', e);
+    }
+  }
+
+  // Also get local unsynced entries
+  const localRows = await withStore('readonly', (store, rp) => rp(store.getAll()));
+  const unsyncedLocal = localRows.filter(r => !r.synced);
+  rows = [...unsyncedLocal, ...rows];
+
   rows.sort((a,b) => b.createdAt - a.createdAt);
   dataTableBody.innerHTML = '';
   for (const r of rows) {
@@ -361,7 +383,8 @@ async function renderDataTable(){
     const t = new Date(r.createdAt).toLocaleString();
     const lat = r.coords ? r.coords.latitude.toFixed(5) : '';
     const lon = r.coords ? r.coords.longitude.toFixed(5) : '';
-    tr.innerHTML = `<td>${t}</td><td>${Number(r.depth).toFixed(1)}</td><td>${r.hasFish?'🐟':''}</td><td>${lat}</td><td>${lon}</td>`;
+    const synced = r.synced === false ? ' (local)' : '';
+    tr.innerHTML = `<td>${t}${synced}</td><td>${Number(r.depth).toFixed(1)}</td><td>${r.hasFish?'🐟':''}</td><td>${lat}</td><td>${lon}</td>`;
     dataTableBody.appendChild(tr);
   }
   if (rows.length && rows[0].coords) {
@@ -476,7 +499,29 @@ function getDepthColor(depth, maxDepth) {
 }
 
 async function renderDepthMap() {
-  const rows = await withStore('readonly', (store, rp) => rp(store.getAll()));
+  let rows = [];
+
+  // Fetch from server if project selected
+  if (currentProject) {
+    try {
+      const res = await fetch(`/api/projects/${currentProject.id}/readings`);
+      const data = await res.json();
+      if (data.ok) {
+        rows = data.readings.map(r => ({
+          ...r,
+          coords: r.latitude ? { latitude: r.latitude, longitude: r.longitude, accuracy: r.accuracy } : null
+        }));
+      }
+    } catch (e) {
+      console.error('Failed to fetch readings for map', e);
+    }
+  }
+
+  // Also get local unsynced entries
+  const localRows = await withStore('readonly', (store, rp) => rp(store.getAll()));
+  const unsyncedLocal = localRows.filter(r => !r.synced);
+  rows = [...unsyncedLocal, ...rows];
+
   const validPoints = rows.filter(p => p.coords && p.coords.accuracy <= 50);
 
   if (validPoints.length < 3) {
