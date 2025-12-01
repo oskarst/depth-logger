@@ -1180,6 +1180,8 @@ async function renderDepthMap() {
 
 // === Live Map ===
 let liveMapPointsLayer = null;
+let liveMapWeedsLayer = null;
+let liveMapFishLayer = null;
 
 async function renderLiveMap() {
   const livePadEl = document.getElementById('live-pad');
@@ -1227,9 +1229,18 @@ async function renderLiveMap() {
 async function updateLiveMapPoints() {
   if (!liveMap || !currentProject) return;
 
-  // Remove old points layer
+  // Remove old layers
   if (liveMapPointsLayer) {
     liveMap.removeLayer(liveMapPointsLayer);
+    liveMapPointsLayer = null;
+  }
+  if (liveMapWeedsLayer) {
+    liveMap.removeLayer(liveMapWeedsLayer);
+    liveMapWeedsLayer = null;
+  }
+  if (liveMapFishLayer) {
+    liveMap.removeLayer(liveMapFishLayer);
+    liveMapFishLayer = null;
   }
 
   // Fetch points from server
@@ -1246,10 +1257,7 @@ async function updateLiveMapPoints() {
   } catch (e) {}
 
   // Get local unsynced
-  const localRows = await withStore('readonly', async (store, rp) => {
-    const req = store.getAll();
-    req.onsuccess = () => rp(req.result || []);
-  });
+  const localRows = await withStore('readonly', (store, rp) => rp(store.getAll()));
   const unsynced = localRows.filter(r => !r.synced);
 
   const allRows = [...serverRows, ...unsynced];
@@ -1300,7 +1308,7 @@ async function updateLiveMapPoints() {
     } catch (e) {
       weedCloud = turf.featureCollection(buffered);
     }
-    L.geoJSON(weedCloud, {
+    liveMapWeedsLayer = L.geoJSON(weedCloud, {
       style: { fillColor: '#228B22', fillOpacity: 0.5, color: '#228B22', weight: 0 },
       onEachFeature: function(feature, layer) {
         layer.on('add', function() {
@@ -1321,7 +1329,7 @@ async function updateLiveMapPoints() {
           .map(f => turf.point([f.longitude, f.latitude], { fishType: f.fishType }));
         if (fishPoints.length > 0) {
           const fishFc = turf.featureCollection(fishPoints);
-          L.geoJSON(fishFc, {
+          liveMapFishLayer = L.geoJSON(fishFc, {
             pointToLayer: function(feature, latlng) {
               return L.marker(latlng, {
                 icon: L.divIcon({
