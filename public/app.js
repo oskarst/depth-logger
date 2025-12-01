@@ -50,12 +50,20 @@ const syncBtn = $('#sync-btn');
 const exportBtn = $('#export-btn');
 const dataBtn = $('#data-btn');
 const locBtn = $('#loc-btn');
+const screenProjects = $('#screen-projects');
 const screenLogger = $('#screen-logger');
 const screenData = $('#screen-data');
 const screenMap = $('#screen-map');
+const loggerContent = $('#logger-content');
 const mapBtn = $('#map-btn');
+const projectBadge = $('#project-badge');
+const changeProjectBtn = $('#change-project-btn');
+const projectsList = $('#projects-list');
+const newProjectInput = $('#new-project-input');
+const addProjectBtn = $('#add-project-btn');
 const dataTableBody = document.querySelector('#data-table tbody');
 let depthMap = null;
+let currentProject = null; // { id, name }
 
 let highRange = false;
 let awaitingDecimal = null;
@@ -68,11 +76,107 @@ let lastSavedPoint = null;
 
 function showScreen(which){
   currentScreen = which;
+
+  // Project screen is separate from logger content
+  const inLogger = ['logger', 'data', 'map'].includes(which);
+  screenProjects.classList.toggle('active', which === 'projects');
+  loggerContent.classList.toggle('hidden', !inLogger);
+
   screenLogger.classList.toggle('active', which === 'logger');
   screenData.classList.toggle('active', which === 'data');
   screenMap.classList.toggle('active', which === 'map');
+
+  if (which === 'projects') loadProjects();
   if (which === 'data') renderDataTable();
   if (which === 'map') renderDepthMap();
+}
+
+// === Project Management ===
+async function loadProjects() {
+  try {
+    const res = await fetch('/api/projects');
+    const data = await res.json();
+    if (data.ok) renderProjectsList(data.projects);
+  } catch (e) {
+    console.error('Failed to load projects', e);
+  }
+}
+
+function renderProjectsList(projects) {
+  projectsList.innerHTML = '';
+  if (!projects.length) {
+    projectsList.innerHTML = '<div style="text-align:center;color:#666;padding:20px">No projects yet. Create one below.</div>';
+    return;
+  }
+  for (const p of projects) {
+    const div = document.createElement('div');
+    div.className = 'project-item';
+    div.innerHTML = `
+      <div>
+        <div class="project-name">${p.name}</div>
+        <div class="project-count">${p.readingsCount} readings</div>
+      </div>
+      <button class="project-delete" data-id="${p.id}" title="Delete project">✕</button>
+    `;
+    div.addEventListener('click', (e) => {
+      if (e.target.classList.contains('project-delete')) return;
+      selectProject(p);
+    });
+    div.querySelector('.project-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteProject(p);
+    });
+    projectsList.appendChild(div);
+  }
+}
+
+function selectProject(project) {
+  currentProject = project;
+  localStorage.setItem('currentProjectId', project.id);
+  localStorage.setItem('currentProjectName', project.name);
+  projectBadge.textContent = `Project: ${project.name}`;
+  showScreen('logger');
+}
+
+async function createProject(name) {
+  try {
+    const res = await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast(`Created project: ${name}`);
+      loadProjects();
+      newProjectInput.value = '';
+    } else {
+      toast(data.error || 'Failed to create project');
+    }
+  } catch (e) {
+    toast('Error creating project');
+  }
+}
+
+async function deleteProject(project) {
+  if (!confirm(`Delete "${project.name}" and all its readings?`)) return;
+  try {
+    const res = await fetch(`/api/projects/${project.id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) {
+      toast(`Deleted: ${project.name}`);
+      if (currentProject?.id === project.id) {
+        currentProject = null;
+        localStorage.removeItem('currentProjectId');
+        localStorage.removeItem('currentProjectName');
+      }
+      loadProjects();
+    } else {
+      toast(data.error || 'Failed to delete');
+    }
+  } catch (e) {
+    toast('Error deleting project');
+  }
 }
 
 function updatePermissionBadge(state){
@@ -237,6 +341,17 @@ fishBtn.addEventListener('click', async () => {
 
 dataBtn.addEventListener('click', () => showScreen(currentScreen === 'data' ? 'logger' : 'data'));
 mapBtn.addEventListener('click', () => showScreen(currentScreen === 'map' ? 'logger' : 'map'));
+changeProjectBtn.addEventListener('click', () => showScreen('projects'));
+addProjectBtn.addEventListener('click', () => {
+  const name = newProjectInput.value.trim();
+  if (name) createProject(name);
+});
+newProjectInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    const name = newProjectInput.value.trim();
+    if (name) createProject(name);
+  }
+});
 document.getElementById('loc-btn').addEventListener('click', async () => {
   const hasPerm = await ensureGeoPermission();
   if (!hasPerm) toast('Enable location in browser settings');
@@ -244,10 +359,14 @@ document.getElementById('loc-btn').addEventListener('click', async () => {
 });
 
 syncBtn.addEventListener('click', async () => {
+  if (!currentProject) {
+    toast('Select a project first');
+    return;
+  }
   const unsynced = (await withStore('readonly', (store, rp) => rp(store.getAll()))).filter(r => !r.synced);
   if (!unsynced.length){ toast('Nothing to sync'); return; }
   try {
-    const res = await fetch('/api/sync', {
+    const res = await fetch(`/api/projects/${currentProject.id}/sync`, {
       method:'POST',
       headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ readings: unsynced })
@@ -438,8 +557,19 @@ function toast(msg){
 (async function init(){
   db = await openDB();
   renderPad();
-  await renderDataTable();
   updateLastSavedUI();
+
+  // Check for saved project
+  const savedProjectId = localStorage.getItem('currentProjectId');
+  const savedProjectName = localStorage.getItem('currentProjectName');
+  if (savedProjectId && savedProjectName) {
+    currentProject = { id: parseInt(savedProjectId), name: savedProjectName };
+    projectBadge.textContent = `Project: ${savedProjectName}`;
+    showScreen('logger');
+  } else {
+    showScreen('projects');
+  }
+
   if (navigator.permissions) {
     try{
       const st = await navigator.permissions.query({ name:'geolocation' });

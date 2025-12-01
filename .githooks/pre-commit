@@ -1,0 +1,16 @@
+#!/bin/sh
+# Auto-update service worker cache version on each commit
+
+SW_FILE="public/service-worker.js"
+
+if [ -f "$SW_FILE" ]; then
+  # Use timestamp as version
+  VERSION="lake-logger-static-$(date +%s)"
+
+  # Update the STATIC_CACHE line
+  sed -i.bak "s/const STATIC_CACHE = '.*'/const STATIC_CACHE = '$VERSION'/" "$SW_FILE"
+  rm -f "$SW_FILE.bak"
+
+  # Stage the updated file
+  git add "$SW_FILE"
+fi

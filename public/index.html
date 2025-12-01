@@ -22,16 +22,35 @@
     </header>
 
     <main class="content">
-      <div class="status-row">
-        <span id="coord-status" class="badge">GPS: Unknown</span>
-        <span id="offline-badge" class="badge secondary">Offline ready</span>
-        <button id="loc-btn" class="btn small" title="Enable GPS">Enable GPS</button>
-        <button id="sync-btn" class="btn small" title="Sync unsent entries">Sync</button>
-        <button id="export-btn" class="btn small ghost" title="Export data as JSON">Export</button>
-      </div>
+      <!-- PROJECT SELECTION SCREEN -->
+      <section id="screen-projects" class="screen active">
+        <div class="projects-wrap">
+          <div class="projects-header">
+            <div class="map-title">Select Project</div>
+          </div>
+          <div id="projects-list" class="projects-list"></div>
+          <div class="projects-actions">
+            <input type="text" id="new-project-input" class="project-input" placeholder="New project name..." />
+            <button id="add-project-btn" class="btn small">Add</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="logger-content" class="logger-content hidden">
+        <div class="status-row">
+          <span id="project-badge" class="badge project-badge">Project: —</span>
+          <button id="change-project-btn" class="btn small ghost" title="Change project">Change</button>
+        </div>
+        <div class="status-row">
+          <span id="coord-status" class="badge">GPS: Unknown</span>
+          <span id="offline-badge" class="badge secondary">Offline ready</span>
+          <button id="loc-btn" class="btn small" title="Enable GPS">Enable GPS</button>
+          <button id="sync-btn" class="btn small" title="Sync unsent entries">Sync</button>
+          <button id="export-btn" class="btn small ghost" title="Export data as JSON">Export</button>
+        </div>
 
       <!-- LOGGER SCREEN -->
-      <section id="screen-logger" class="screen active">
+      <section id="screen-logger" class="screen">
         <div id="pad" class="pad"></div>
       </section>
 
@@ -71,6 +90,7 @@
           <div id="depth-map"></div>
         </div>
       </section>
+      </div><!-- /logger-content -->
     </main>
 
     <footer class="bottombar">
