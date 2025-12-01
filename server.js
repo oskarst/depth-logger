@@ -25,7 +25,37 @@ db.exec(`
     latitude REAL,
     longitude REAL,
     accuracy REAL,
+    has_weeds INTEGER DEFAULT 0,
     has_fish INTEGER DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+  )
+`);
+
+// Migration: add has_weeds column if missing and migrate data from has_fish
+try {
+  const cols = db.pragma('table_info(readings)').map(c => c.name);
+  if (!cols.includes('has_weeds')) {
+    db.exec(`ALTER TABLE readings ADD COLUMN has_weeds INTEGER DEFAULT 0`);
+    // Migrate existing has_fish data to has_weeds (old fish was actually weeds)
+    db.exec(`UPDATE readings SET has_weeds = has_fish, has_fish = 0`);
+  }
+} catch (e) {
+  console.log('Migration check:', e.message);
+}
+
+// Fish catches table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS fish_catches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    fish_type TEXT,
+    weight REAL,
+    length REAL,
+    notes TEXT,
+    latitude REAL,
+    longitude REAL,
+    accuracy REAL,
     created_at INTEGER NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id)
   )
@@ -43,8 +73,8 @@ const getProjectById = db.prepare(`SELECT id, name FROM projects WHERE id = ?`);
 
 // Prepared statements - Readings
 const insertReading = db.prepare(`
-  INSERT INTO readings (project_id, depth, latitude, longitude, accuracy, has_fish, created_at)
-  VALUES (@projectId, @depth, @latitude, @longitude, @accuracy, @hasFish, @createdAt)
+  INSERT INTO readings (project_id, depth, latitude, longitude, accuracy, has_weeds, has_fish, created_at)
+  VALUES (@projectId, @depth, @latitude, @longitude, @accuracy, @hasWeeds, @hasFish, @createdAt)
 `);
 
 const insertMany = db.transaction((readings, projectId) => {
@@ -55,6 +85,7 @@ const insertMany = db.transaction((readings, projectId) => {
       latitude: r.coords?.latitude || null,
       longitude: r.coords?.longitude || null,
       accuracy: r.coords?.accuracy || null,
+      hasWeeds: r.hasWeeds ? 1 : 0,
       hasFish: r.hasFish ? 1 : 0,
       createdAt: r.createdAt
     });
@@ -62,7 +93,7 @@ const insertMany = db.transaction((readings, projectId) => {
 });
 
 const getReadings = db.prepare(`
-  SELECT id, depth, latitude, longitude, accuracy, has_fish as hasFish, created_at as createdAt
+  SELECT id, depth, latitude, longitude, accuracy, has_weeds as hasWeeds, has_fish as hasFish, created_at as createdAt
   FROM readings WHERE project_id = ? ORDER BY created_at DESC
 `);
 
@@ -70,13 +101,28 @@ const getReadingsCount = db.prepare(`SELECT COUNT(*) as count FROM readings WHER
 
 const deleteProjectWithReadings = db.transaction((projectId) => {
   deleteProjectReadings.run(projectId);
+  deleteProjectFishCatches.run(projectId);
   deleteProject.run(projectId);
 });
 
 const clearProjectReadings = db.prepare(`DELETE FROM readings WHERE project_id = ?`);
 const deleteReading = db.prepare(`DELETE FROM readings WHERE id = ?`);
-const updateReading = db.prepare(`UPDATE readings SET depth = ?, has_fish = ? WHERE id = ?`);
+const updateReading = db.prepare(`UPDATE readings SET depth = ?, has_weeds = ?, has_fish = ? WHERE id = ?`);
 const checkDuplicateCoords = db.prepare(`SELECT COUNT(*) as count FROM readings WHERE project_id = ? AND latitude = ? AND longitude = ?`);
+
+// Prepared statements - Fish catches
+const insertFishCatch = db.prepare(`
+  INSERT INTO fish_catches (project_id, fish_type, weight, length, notes, latitude, longitude, accuracy, created_at)
+  VALUES (@projectId, @fishType, @weight, @length, @notes, @latitude, @longitude, @accuracy, @createdAt)
+`);
+const getFishCatches = db.prepare(`
+  SELECT id, fish_type as fishType, weight, length, notes, latitude, longitude, accuracy, created_at as createdAt
+  FROM fish_catches WHERE project_id = ? ORDER BY created_at DESC
+`);
+const getFishCatchesCount = db.prepare(`SELECT COUNT(*) as count FROM fish_catches WHERE project_id = ?`);
+const updateFishCatch = db.prepare(`UPDATE fish_catches SET fish_type = ?, weight = ?, length = ?, notes = ? WHERE id = ?`);
+const deleteFishCatch = db.prepare(`DELETE FROM fish_catches WHERE id = ?`);
+const deleteProjectFishCatches = db.prepare(`DELETE FROM fish_catches WHERE project_id = ?`);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -193,12 +239,82 @@ app.delete('/api/readings/:id', (req, res) => {
 // Update single reading
 app.patch('/api/readings/:id', (req, res) => {
   const id = parseInt(req.params.id);
-  const { depth, hasFish } = req.body;
+  const { depth, hasWeeds, hasFish } = req.body;
   if (!id) {
     return res.status(400).json({ ok: false, error: 'Invalid reading id' });
   }
   try {
-    updateReading.run(depth, hasFish ? 1 : 0, id);
+    updateReading.run(depth, hasWeeds ? 1 : 0, hasFish ? 1 : 0, id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// === Fish catches endpoints ===
+
+// Get fish catches for a project
+app.get('/api/projects/:id/fish', (req, res) => {
+  const projectId = parseInt(req.params.id);
+  if (!projectId) {
+    return res.status(400).json({ ok: false, error: 'Invalid project id' });
+  }
+  try {
+    const rows = getFishCatches.all(projectId);
+    res.json({ ok: true, catches: rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Add fish catch
+app.post('/api/projects/:id/fish', (req, res) => {
+  const projectId = parseInt(req.params.id);
+  const { fishType, weight, length, notes, latitude, longitude, accuracy } = req.body;
+  if (!projectId) {
+    return res.status(400).json({ ok: false, error: 'Invalid project id' });
+  }
+  try {
+    const result = insertFishCatch.run({
+      projectId,
+      fishType: fishType || null,
+      weight: weight || null,
+      length: length || null,
+      notes: notes || null,
+      latitude: latitude || null,
+      longitude: longitude || null,
+      accuracy: accuracy || null,
+      createdAt: Date.now()
+    });
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Update fish catch
+app.patch('/api/fish/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  const { fishType, weight, length, notes } = req.body;
+  if (!id) {
+    return res.status(400).json({ ok: false, error: 'Invalid fish catch id' });
+  }
+  try {
+    updateFishCatch.run(fishType || null, weight || null, length || null, notes || null, id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Delete fish catch
+app.delete('/api/fish/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  if (!id) {
+    return res.status(400).json({ ok: false, error: 'Invalid fish catch id' });
+  }
+  try {
+    deleteFishCatch.run(id);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -225,7 +341,8 @@ app.post('/api/projects/:id/import', (req, res) => {
     const normalized = data.map(r => ({
       depth: r.depth,
       coords: r.coords || { latitude: r.latitude, longitude: r.longitude, accuracy: r.accuracy },
-      hasFish: r.hasFish || r.has_fish || false,
+      hasWeeds: r.hasWeeds || r.has_weeds || r.hasFish || r.has_fish || false, // legacy: hasFish → hasWeeds
+      hasFish: false, // Reset on import, caught fish handled separately
       createdAt: r.createdAt || r.created_at || Date.now()
     }));
 

@@ -72,7 +72,29 @@
                 <tr>
                   <th>Time</th>
                   <th>Depth (m)</th>
-                  <th>Fish</th>
+                  <th>Weeds</th>
+                  <th>Lat</th>
+                  <th>Lon</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="data-wrap" style="margin-top:12px">
+          <div class="map-header data-header">
+            <div class="map-title">Fish Catches</div>
+          </div>
+          <div class="table-wrap">
+            <table id="fish-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Type</th>
+                  <th>Weight</th>
+                  <th>Length</th>
                   <th>Lat</th>
                   <th>Lon</th>
                   <th></th>
@@ -94,6 +116,7 @@
               <label class="layer-toggle"><input type="checkbox" id="layer-contours" checked><span>Contours</span></label>
               <label class="layer-toggle"><input type="checkbox" id="layer-points" checked><span>Points</span></label>
               <label class="layer-toggle"><input type="checkbox" id="layer-weeds" checked><span>Weeds</span></label>
+              <label class="layer-toggle"><input type="checkbox" id="layer-fish" checked><span>Fish</span></label>
             </div>
           </div>
           <div class="map-legend" id="map-legend"></div>
@@ -117,7 +140,8 @@
         <button id="change-project-btn" class="btn small ghost" title="Change project">Change</button>
       </div>
       <div class="bottombar-right">
-        <button id="fish-btn" class="fish-btn" title="Tag last point as Has Fish" aria-label="Has Fish">🐟</button>
+        <button id="weeds-btn" class="weeds-btn" title="Tag last point as Has Weeds" aria-label="Has Weeds">🌿</button>
+        <button id="fish-btn" class="fish-btn" title="Log caught fish" aria-label="Caught Fish">🐟</button>
         <button id="livemap-btn" class="map-btn" title="Live Map">📍</button>
         <button id="map-btn" class="map-btn" title="Open depth map">🗺️</button>
         <button id="data-btn" class="map-btn" title="Open data">📋</button>
@@ -128,6 +152,42 @@
   <template id="entry-pill-tpl">
     <div class="pill"></div>
   </template>
+
+  <!-- Fish catch modal -->
+  <div id="fish-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="fish-modal-title">Log Fish Catch</h3>
+        <button class="modal-close" id="fish-modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="fish-type">Fish Type</label>
+          <input type="text" id="fish-type" placeholder="e.g. Bass, Trout, Pike..." />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="fish-weight">Weight (kg)</label>
+            <input type="number" id="fish-weight" step="0.1" placeholder="0.0" />
+          </div>
+          <div class="form-group">
+            <label for="fish-length">Length (cm)</label>
+            <input type="number" id="fish-length" step="1" placeholder="0" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="fish-notes">Notes</label>
+          <textarea id="fish-notes" rows="2" placeholder="Lure used, conditions..."></textarea>
+        </div>
+        <div id="fish-location" class="fish-location"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="fish-modal-delete" class="btn danger hidden">Delete</button>
+        <button id="fish-modal-save" class="btn">Save</button>
+      </div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>

@@ -44,6 +44,7 @@ const $ = (sel) => document.querySelector(sel);
 const padEl = $('#pad');
 const lastSavedEl = $('#last-saved');
 const liveLineEl = $('#live-line');
+const weedsBtn = $('#weeds-btn');
 const fishBtn = $('#fish-btn');
 const coordBadge = $('#coord-status');
 const syncBtn = $('#sync-btn');
@@ -69,7 +70,7 @@ const dataTableBody = document.querySelector('#data-table tbody');
 let depthMap = null;
 let liveMap = null;
 let liveMarker = null;
-let mapLayers = { depth: null, contours: null, points: null, weeds: null };
+let mapLayers = { depth: null, contours: null, points: null, weeds: null, fish: null };
 let currentProject = null; // { id, name }
 
 let highRange = false;
@@ -342,6 +343,7 @@ async function logPoint(depth) {
   const reading = {
     depth,
     coords: fix ? { latitude: fix.latitude, longitude: fix.longitude, accuracy: fix.accuracy } : null,
+    hasWeeds: false,
     hasFish: false,
     createdAt: Date.now(),
     synced: false
@@ -398,7 +400,7 @@ async function renderDataTable(){
     tr.innerHTML = `
       <td>${t}${synced}</td>
       <td>${Number(r.depth).toFixed(1)}</td>
-      <td>${r.hasFish?'🐟':''}</td>
+      <td>${r.hasWeeds?'🌿':''}</td>
       <td>${lat}</td>
       <td>${lon}</td>
       <td class="row-actions">
@@ -413,6 +415,55 @@ async function renderDataTable(){
   if (rows.length && rows[0].coords) {
     lastSavedPoint = rows[0].coords;
     updateLastSavedUI();
+  }
+
+  // Also render fish table
+  renderFishTable();
+}
+
+const fishTableBody = document.querySelector('#fish-table tbody');
+
+async function renderFishTable() {
+  if (!currentProject || !fishTableBody) return;
+
+  try {
+    const res = await fetch(`/api/projects/${currentProject.id}/fish`);
+    const data = await res.json();
+    if (!data.ok) return;
+
+    fishTableBody.innerHTML = '';
+    for (const f of data.catches) {
+      const tr = document.createElement('tr');
+      const t = new Date(f.createdAt).toLocaleString();
+      const lat = f.latitude ? f.latitude.toFixed(5) : '';
+      const lon = f.longitude ? f.longitude.toFixed(5) : '';
+      tr.innerHTML = `
+        <td>${t}</td>
+        <td>${f.fishType || '-'}</td>
+        <td>${f.weight ? f.weight + ' kg' : '-'}</td>
+        <td>${f.length ? f.length + ' cm' : '-'}</td>
+        <td>${lat}</td>
+        <td>${lon}</td>
+        <td class="row-actions">
+          <button class="row-btn edit-btn" title="Edit">✏️</button>
+          <button class="row-btn delete-btn" title="Delete">🗑️</button>
+        </td>
+      `;
+      tr.querySelector('.edit-btn').addEventListener('click', () => openFishModal(f));
+      tr.querySelector('.delete-btn').addEventListener('click', async () => {
+        if (!confirm('Delete this fish catch?')) return;
+        try {
+          await fetch(`/api/fish/${f.id}`, { method: 'DELETE' });
+          toast('Fish catch deleted');
+          renderFishTable();
+        } catch (e) {
+          toast('Failed to delete');
+        }
+      });
+      fishTableBody.appendChild(tr);
+    }
+  } catch (e) {
+    console.error('Failed to load fish catches', e);
   }
 }
 
@@ -439,21 +490,21 @@ function editReading(reading) {
     toast('Invalid depth');
     return;
   }
-  const hasFish = confirm('Has fish/weeds?');
-  updateReadingEntry(reading, depth, hasFish);
+  const hasWeeds = confirm('Has weeds?');
+  updateReadingEntry(reading, depth, hasWeeds);
 }
 
-async function updateReadingEntry(reading, depth, hasFish) {
+async function updateReadingEntry(reading, depth, hasWeeds) {
   try {
     if (reading.isServer) {
       await fetch(`/api/readings/${reading.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ depth, hasFish })
+        body: JSON.stringify({ depth, hasWeeds, hasFish: reading.hasFish || false })
       });
     } else if (reading.isLocal) {
       reading.depth = depth;
-      reading.hasFish = hasFish;
+      reading.hasWeeds = hasWeeds;
       await withStore('readwrite', (store) => store.put(reading));
     }
     renderDataTable();
@@ -463,15 +514,122 @@ async function updateReadingEntry(reading, depth, hasFish) {
   }
 }
 
-fishBtn.addEventListener('click', async () => {
+weedsBtn.addEventListener('click', async () => {
   const rows = await withStore('readonly', (store, rp) => rp(store.getAll()));
   rows.sort((a,b) => b.createdAt - a.createdAt);
   if (!rows.length) return;
   const latest = rows[0];
-  latest.hasFish = true;
+  latest.hasWeeds = true;
   await withStore('readwrite', (store, rp) => rp(store.put(latest)));
   if (currentScreen === 'data') renderDataTable();
-  toast('Tagged last point as Has Fish 🐟');
+  toast('Tagged last point as Has Weeds 🌿');
+});
+
+// Fish catch modal handling
+const fishModal = $('#fish-modal');
+const fishModalClose = $('#fish-modal-close');
+const fishModalSave = $('#fish-modal-save');
+const fishModalDelete = $('#fish-modal-delete');
+const fishModalTitle = $('#fish-modal-title');
+const fishTypeInput = $('#fish-type');
+const fishWeightInput = $('#fish-weight');
+const fishLengthInput = $('#fish-length');
+const fishNotesInput = $('#fish-notes');
+const fishLocationEl = $('#fish-location');
+let editingFishId = null;
+let fishCatchCoords = null;
+
+function openFishModal(fishCatch = null) {
+  editingFishId = fishCatch?.id || null;
+  fishModalTitle.textContent = fishCatch ? 'Edit Fish Catch' : 'Log Fish Catch';
+  fishModalDelete.classList.toggle('hidden', !fishCatch);
+
+  fishTypeInput.value = fishCatch?.fishType || '';
+  fishWeightInput.value = fishCatch?.weight || '';
+  fishLengthInput.value = fishCatch?.length || '';
+  fishNotesInput.value = fishCatch?.notes || '';
+
+  if (fishCatch && fishCatch.latitude) {
+    fishCatchCoords = { latitude: fishCatch.latitude, longitude: fishCatch.longitude, accuracy: fishCatch.accuracy };
+    fishLocationEl.textContent = `📍 ${fishCatch.latitude.toFixed(5)}, ${fishCatch.longitude.toFixed(5)}`;
+  } else if (liveFix) {
+    fishCatchCoords = { latitude: liveFix.latitude, longitude: liveFix.longitude, accuracy: liveFix.accuracy };
+    fishLocationEl.textContent = `📍 ${liveFix.latitude.toFixed(5)}, ${liveFix.longitude.toFixed(5)}`;
+  } else {
+    fishCatchCoords = null;
+    fishLocationEl.textContent = 'GPS location will be captured';
+  }
+
+  fishModal.classList.remove('hidden');
+}
+
+function closeFishModal() {
+  fishModal.classList.add('hidden');
+  editingFishId = null;
+  fishCatchCoords = null;
+}
+
+fishModalClose.addEventListener('click', closeFishModal);
+fishModal.querySelector('.modal-backdrop').addEventListener('click', closeFishModal);
+
+fishModalSave.addEventListener('click', async () => {
+  if (!currentProject) {
+    toast('Select a project first');
+    return;
+  }
+
+  const fishData = {
+    fishType: fishTypeInput.value.trim(),
+    weight: fishWeightInput.value ? parseFloat(fishWeightInput.value) : null,
+    length: fishLengthInput.value ? parseFloat(fishLengthInput.value) : null,
+    notes: fishNotesInput.value.trim(),
+    latitude: fishCatchCoords?.latitude || null,
+    longitude: fishCatchCoords?.longitude || null,
+    accuracy: fishCatchCoords?.accuracy || null
+  };
+
+  try {
+    if (editingFishId) {
+      await fetch(`/api/fish/${editingFishId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fishData)
+      });
+      toast('Fish catch updated');
+    } else {
+      await fetch(`/api/projects/${currentProject.id}/fish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fishData)
+      });
+      toast('Fish catch logged 🐟');
+    }
+    closeFishModal();
+    if (currentScreen === 'data') {
+      renderDataTable();
+      renderFishTable();
+    }
+  } catch (e) {
+    toast('Failed to save fish catch');
+  }
+});
+
+fishModalDelete.addEventListener('click', async () => {
+  if (!editingFishId) return;
+  if (!confirm('Delete this fish catch?')) return;
+  try {
+    await fetch(`/api/fish/${editingFishId}`, { method: 'DELETE' });
+    toast('Fish catch deleted');
+    closeFishModal();
+    if (currentScreen === 'data') renderFishTable();
+  } catch (e) {
+    toast('Failed to delete');
+  }
+});
+
+fishBtn.addEventListener('click', () => {
+  startTracking();
+  openFishModal();
 });
 
 dataBtn.addEventListener('click', () => showScreen(currentScreen === 'data' ? 'logger' : 'data'));
@@ -497,7 +655,7 @@ importFileInput.addEventListener('change', (e) => {
 });
 
 // Layer visibility toggles
-['depth', 'contours', 'points', 'weeds'].forEach(name => {
+['depth', 'contours', 'points', 'weeds', 'fish'].forEach(name => {
   const checkbox = document.getElementById('layer-' + name);
   if (checkbox) {
     checkbox.addEventListener('change', () => {
@@ -651,8 +809,8 @@ async function renderDepthMap() {
   }
 
   // Create Turf points
-  const points = validPoints.map(p => turf.point([p.coords.longitude, p.coords.latitude], { depth: p.depth, hasFish: p.hasFish }));
-  const weedPoints = validPoints.filter(p => p.hasFish).map(p => turf.point([p.coords.longitude, p.coords.latitude], { depth: p.depth }));
+  const points = validPoints.map(p => turf.point([p.coords.longitude, p.coords.latitude], { depth: p.depth, hasWeeds: p.hasWeeds }));
+  const weedPoints = validPoints.filter(p => p.hasWeeds).map(p => turf.point([p.coords.longitude, p.coords.latitude], { depth: p.depth }));
   const fc = turf.featureCollection(points);
   const maxDepth = Math.max(...points.map(p => p.properties.depth));
 
@@ -712,7 +870,7 @@ async function renderDepthMap() {
       });
     },
     onEachFeature: function(feature, layer) {
-      const hasWeeds = feature.properties.hasFish ? ' (weeds)' : '';
+      const hasWeeds = feature.properties.hasWeeds ? ' (weeds)' : '';
       layer.bindPopup(`Depth: ${feature.properties.depth}m${hasWeeds}`);
     }
   }).addTo(depthMap);
@@ -748,12 +906,59 @@ async function renderDepthMap() {
     }
   });
 
+  // Fetch and add fish catches layer
+  mapLayers.fish = null;
+  if (currentProject) {
+    try {
+      const fishRes = await fetch(`/api/projects/${currentProject.id}/fish`);
+      const fishData = await fishRes.json();
+      if (fishData.ok && fishData.catches.length > 0) {
+        const fishPoints = fishData.catches
+          .filter(f => f.latitude && f.longitude)
+          .map(f => turf.point([f.longitude, f.latitude], {
+            fishType: f.fishType,
+            weight: f.weight,
+            length: f.length,
+            notes: f.notes
+          }));
+        if (fishPoints.length > 0) {
+          const fishFc = turf.featureCollection(fishPoints);
+          mapLayers.fish = L.geoJSON(fishFc, {
+            pointToLayer: function(feature, latlng) {
+              return L.marker(latlng, {
+                icon: L.divIcon({
+                  className: 'fish-map-marker',
+                  html: '🐟',
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12]
+                })
+              });
+            },
+            onEachFeature: function(feature, layer) {
+              const p = feature.properties;
+              const details = [
+                p.fishType || 'Unknown',
+                p.weight ? `${p.weight}kg` : null,
+                p.length ? `${p.length}cm` : null,
+                p.notes || null
+              ].filter(Boolean).join(' • ');
+              layer.bindPopup(`🐟 ${details}`);
+            }
+          }).addTo(depthMap);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load fish catches for map', e);
+    }
+  }
+
   // Render legend
   const legendEl = document.getElementById('map-legend');
   const depths = [0, 5, 10, 15, 20, Math.ceil(maxDepth)];
   legendEl.innerHTML = depths.map(d =>
     `<span class="legend-item"><span class="legend-swatch" style="background:${getDepthColor(d, maxDepth)}"></span>${d}m</span>`
-  ).join('') + '<span class="legend-item"><span class="legend-weeds"></span>Weeds</span>';
+  ).join('') + '<span class="legend-item"><span class="legend-weeds"></span>Weeds</span>' +
+  '<span class="legend-item"><span class="legend-fish">🐟</span>Fish</span>';
 }
 
 // === Live Map ===
@@ -841,7 +1046,7 @@ async function updateLiveMapPoints() {
   // Create points layer
   const points = validPoints.map(p => turf.point(
     [p.coords.longitude, p.coords.latitude],
-    { depth: p.depth, hasFish: p.hasFish }
+    { depth: p.depth, hasWeeds: p.hasWeeds }
   ));
   const fc = turf.featureCollection(points);
 
@@ -850,16 +1055,47 @@ async function updateLiveMapPoints() {
       return L.circleMarker(latlng, {
         radius: 6,
         fillColor: getDepthColor(feature.properties.depth, maxDepth),
-        color: feature.properties.hasFish ? '#006400' : '#333',
-        weight: feature.properties.hasFish ? 3 : 1,
+        color: feature.properties.hasWeeds ? '#006400' : '#333',
+        weight: feature.properties.hasWeeds ? 3 : 1,
         fillOpacity: 0.9
       });
     },
     onEachFeature: function(feature, layer) {
-      const hasWeeds = feature.properties.hasFish ? ' (weeds)' : '';
+      const hasWeeds = feature.properties.hasWeeds ? ' (weeds)' : '';
       layer.bindPopup(`${feature.properties.depth}m${hasWeeds}`);
     }
   }).addTo(liveMap);
+
+  // Add fish catches to live map
+  if (currentProject) {
+    try {
+      const fishRes = await fetch(`/api/projects/${currentProject.id}/fish`);
+      const fishData = await fishRes.json();
+      if (fishData.ok && fishData.catches.length > 0) {
+        const fishPoints = fishData.catches
+          .filter(f => f.latitude && f.longitude)
+          .map(f => turf.point([f.longitude, f.latitude], { fishType: f.fishType }));
+        if (fishPoints.length > 0) {
+          const fishFc = turf.featureCollection(fishPoints);
+          L.geoJSON(fishFc, {
+            pointToLayer: function(feature, latlng) {
+              return L.marker(latlng, {
+                icon: L.divIcon({
+                  className: 'fish-map-marker',
+                  html: '🐟',
+                  iconSize: [20, 20],
+                  iconAnchor: [10, 10]
+                })
+              });
+            },
+            onEachFeature: function(feature, layer) {
+              layer.bindPopup(`🐟 ${feature.properties.fishType || 'Fish'}`);
+            }
+          }).addTo(liveMap);
+        }
+      }
+    } catch (e) {}
+  }
 }
 
 function renderLivePad(container) {
