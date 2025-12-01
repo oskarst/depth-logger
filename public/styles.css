@@ -104,7 +104,7 @@ tbody tr:hover{ background: #f9fbfd; }
 .layer-toggle{ display:flex; align-items:center; gap:4px; font-size:12px; color: var(--muted); cursor:pointer; user-select:none; }
 .layer-toggle input{ accent-color: var(--accent); cursor:pointer; }
 .layer-toggle input:not(:checked) + span{ opacity:0.5; text-decoration:line-through; }
-#depth-map{ height: 60vh; min-height: 300px; }
+#depth-map{ height: 51vh; min-height: 280px; }
 .map-legend{ display:flex; gap:8px; flex-wrap:wrap; padding:8px 12px; border-bottom: 1px dashed var(--border); }
 .legend-item{ display:flex; align-items:center; gap:4px; font-size:11px; color: var(--muted); }
 .legend-swatch{ width:16px; height:12px; border-radius:2px; border:1px solid rgba(0,0,0,.15); }
@@ -157,5 +157,5 @@ tbody tr:hover{ background: #f9fbfd; }
   .content{ padding: 8px 10px 90px; }
   .pad{ gap: 6px; }
   .key{ border-radius: 10px; }
-  #depth-map{ height: 50vh; }
+  #depth-map{ height: 43vh; }
 }
