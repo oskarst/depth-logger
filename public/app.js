@@ -1456,8 +1456,13 @@ function renderLivePad(container) {
         return;
       }
       if (k.shore) {
-        await logPoint(0, true);
-        toast('Shore line marked 🏖️');
+        try {
+          await logPoint(0, true);
+          toast('Shore line marked 🏖️');
+        } catch (e) {
+          console.error('Failed to log shore point:', e);
+          toast('Error saving shore point');
+        }
         return;
       }
       if (k.toggler) {
@@ -1472,8 +1477,14 @@ function renderLivePad(container) {
       } else {
         const depth = Number(`${awaitingDecimal}.${k.value}`);
         awaitingDecimal = null;
-        await logPoint(depth);
-        renderLivePad(container);
+        try {
+          await logPoint(depth);
+        } catch (e) {
+          console.error('Failed to log point:', e);
+          toast('Error saving point');
+        } finally {
+          renderLivePad(container);
+        }
       }
     });
     container.appendChild(btn);
