@@ -139,7 +139,14 @@ async function handleImport(file) {
   }
   try {
     const text = await file.text();
-    const data = JSON.parse(text);
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      toast('Invalid JSON file');
+      return;
+    }
+
     const readings = Array.isArray(data) ? data : data.readings || [];
 
     if (!readings.length) {
@@ -159,7 +166,8 @@ async function handleImport(file) {
       toast(result.error || 'Import failed');
     }
   } catch (e) {
-    toast('Error reading file: ' + e.message);
+    console.error('Import error:', e);
+    toast('Import failed: ' + e.message);
   }
   importFileInput.value = '';
 }
