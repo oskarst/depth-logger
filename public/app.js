@@ -1190,6 +1190,9 @@ async function renderLiveMap() {
   // Render compact pad
   renderLivePad(livePadEl);
 
+  // Ensure GPS tracking is active
+  startTracking();
+
   // Initialize map if needed
   if (!liveMap) {
     const startLat = liveFix?.latitude || 54.5;
@@ -1224,11 +1227,17 @@ async function renderLiveMap() {
     } catch (e) {}
   }
 
-  // Start updating live marker
+  // Start updating live marker position continuously
   if (!liveMap._liveInterval) {
     liveMap._liveInterval = setInterval(() => {
-      if (liveFix && currentScreen === 'livemap') {
-        liveMarker.setLatLng([liveFix.latitude, liveFix.longitude]);
+      if (liveFix && currentScreen === 'livemap' && liveMarker) {
+        const newPos = [liveFix.latitude, liveFix.longitude];
+        liveMarker.setLatLng(newPos);
+        liveMarker.bringToFront();
+        // Pan map to follow marker (smooth pan)
+        if (!liveMap.getBounds().contains(newPos)) {
+          liveMap.panTo(newPos);
+        }
       }
     }, 1000);
   }
