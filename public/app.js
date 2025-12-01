@@ -164,8 +164,8 @@ function renderPad() {
   }
 }
 
-async function getFreshLiveOrWait(maxWaitMs=5000){
-  const recent = (f) => f && (Date.now() - f.ts) < 5000;
+async function getFreshLiveOrWait(maxWaitMs=3000){
+  const recent = (f) => f && (Date.now() - f.ts) < 3000;
   if (recent(liveFix)) return liveFix;
   return new Promise((resolve) => {
     const start = Date.now();
@@ -183,7 +183,7 @@ async function logPoint(depth) {
     toast('Enable location in settings');
   }
   startTracking();
-  const fix = await getFreshLiveOrWait(5000);
+  const fix = await getFreshLiveOrWait(3000);
   const reading = {
     depth,
     coords: fix ? { latitude: fix.latitude, longitude: fix.longitude, accuracy: fix.accuracy } : null,
