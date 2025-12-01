@@ -168,7 +168,8 @@ async function handleImport(file) {
     });
     const result = await res.json();
     if (result.ok) {
-      toast(`Imported ${result.imported} readings`);
+      const skippedMsg = result.skipped ? ` (${result.skipped} duplicates skipped)` : '';
+      toast(`Imported ${result.imported} readings${skippedMsg}`);
       renderDataTable();
     } else {
       toast(result.error || 'Import failed');

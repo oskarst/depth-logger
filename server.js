@@ -76,6 +76,7 @@ const deleteProjectWithReadings = db.transaction((projectId) => {
 const clearProjectReadings = db.prepare(`DELETE FROM readings WHERE project_id = ?`);
 const deleteReading = db.prepare(`DELETE FROM readings WHERE id = ?`);
 const updateReading = db.prepare(`UPDATE readings SET depth = ?, has_fish = ? WHERE id = ?`);
+const checkDuplicateCoords = db.prepare(`SELECT COUNT(*) as count FROM readings WHERE project_id = ? AND latitude = ? AND longitude = ?`);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -228,8 +229,18 @@ app.post('/api/projects/:id/import', (req, res) => {
       createdAt: r.createdAt || r.created_at || Date.now()
     }));
 
-    insertMany(normalized, projectId);
-    res.json({ ok: true, imported: normalized.length });
+    // Filter out duplicates (same coordinates already exist)
+    const unique = normalized.filter(r => {
+      if (!r.coords?.latitude || !r.coords?.longitude) return true; // Allow points without coords
+      const exists = checkDuplicateCoords.get(projectId, r.coords.latitude, r.coords.longitude);
+      return exists.count === 0;
+    });
+
+    const skipped = normalized.length - unique.length;
+    if (unique.length > 0) {
+      insertMany(unique, projectId);
+    }
+    res.json({ ok: true, imported: unique.length, skipped });
   } catch (err) {
     console.error('Import error:', err);
     res.status(500).json({ ok: false, error: err.message });
