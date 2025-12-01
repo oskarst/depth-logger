@@ -78,10 +78,8 @@ tbody tr:hover{ background: #f9fbfd; }
 .project-item:hover{ background: #e8f4fc; border-color: var(--accent); }
 .project-name{ font-weight:600; }
 .project-count{ font-size:12px; color: var(--muted); }
-.project-actions{ display:flex; gap:4px; }
-.project-import, .project-delete{ background:none; border:none; cursor:pointer; font-size:16px; padding:4px 8px; opacity:0.6; }
-.project-delete{ color: var(--danger); }
-.project-import:hover, .project-delete:hover{ opacity:1; }
+.project-delete{ background:none; border:none; color: var(--danger); cursor:pointer; font-size:16px; padding:4px 8px; opacity:0.6; }
+.project-delete:hover{ opacity:1; }
 .projects-actions{ display:flex; gap:8px; }
 .project-input{ flex:1; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-size:14px; }
 .project-input:focus{ outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }

@@ -61,6 +61,7 @@ const changeProjectBtn = $('#change-project-btn');
 const projectsList = $('#projects-list');
 const newProjectInput = $('#new-project-input');
 const addProjectBtn = $('#add-project-btn');
+const importBtn = $('#import-btn');
 const importFileInput = $('#import-file-input');
 const dataTableBody = document.querySelector('#data-table tbody');
 let depthMap = null;
@@ -117,18 +118,11 @@ function renderProjectsList(projects) {
         <div class="project-name">${p.name}</div>
         <div class="project-count">${p.readingsCount} readings</div>
       </div>
-      <div class="project-actions">
-        <button class="project-import" data-id="${p.id}" title="Import JSON">📥</button>
-        <button class="project-delete" data-id="${p.id}" title="Delete project">✕</button>
-      </div>
+      <button class="project-delete" data-id="${p.id}" title="Delete project">✕</button>
     `;
     div.addEventListener('click', (e) => {
-      if (e.target.classList.contains('project-delete') || e.target.classList.contains('project-import')) return;
+      if (e.target.classList.contains('project-delete')) return;
       selectProject(p);
-    });
-    div.querySelector('.project-import').addEventListener('click', (e) => {
-      e.stopPropagation();
-      triggerImport(p);
     });
     div.querySelector('.project-delete').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -138,15 +132,11 @@ function renderProjectsList(projects) {
   }
 }
 
-let importTargetProject = null;
-
-function triggerImport(project) {
-  importTargetProject = project;
-  importFileInput.click();
-}
-
 async function handleImport(file) {
-  if (!importTargetProject || !file) return;
+  if (!currentProject || !file) {
+    toast('Select a project first');
+    return;
+  }
   try {
     const text = await file.text();
     const data = JSON.parse(text);
@@ -157,22 +147,20 @@ async function handleImport(file) {
       return;
     }
 
-    const res = await fetch(`/api/projects/${importTargetProject.id}/import`, {
+    const res = await fetch(`/api/projects/${currentProject.id}/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ readings })
     });
     const result = await res.json();
     if (result.ok) {
-      toast(`Imported ${result.imported} readings to ${importTargetProject.name}`);
-      loadProjects();
+      toast(`Imported ${result.imported} readings`);
     } else {
       toast(result.error || 'Import failed');
     }
   } catch (e) {
     toast('Error reading file: ' + e.message);
   }
-  importTargetProject = null;
   importFileInput.value = '';
 }
 
@@ -398,6 +386,7 @@ newProjectInput.addEventListener('keypress', (e) => {
     if (name) createProject(name);
   }
 });
+importBtn.addEventListener('click', () => importFileInput.click());
 importFileInput.addEventListener('change', (e) => {
   if (e.target.files[0]) handleImport(e.target.files[0]);
 });
