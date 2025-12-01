@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'lake-logger-static-1764595382';
+const STATIC_CACHE = 'lake-logger-static-1764603669';
 const STATIC_ASSETS = [
   '/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest',
   '/icon-192.png', '/icon-512.png'

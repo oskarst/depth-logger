@@ -370,7 +370,13 @@ async function logPoint(depth, isShore = false) {
   lastSavedPoint = reading.coords;
   updateLastSavedUI();
   if (currentScreen === 'data') renderDataTable();
-  if (currentScreen === 'livemap') await updateLiveMapPoints();
+  if (currentScreen === 'livemap') {
+    try {
+      await updateLiveMapPoints();
+    } catch (e) {
+      console.error('Failed to update live map:', e);
+    }
+  }
   toast(`Saved ${depth.toFixed(1)}m` + (reading.coords ? ` @ ${reading.coords.latitude.toFixed(5)}, ${reading.coords.longitude.toFixed(5)}` : ' • no GPS'));
 }
 
@@ -1301,30 +1307,34 @@ async function updateLiveMapPoints() {
   }
 
   // Get max depth for color scale
-  const maxDepth = Math.max(...validPoints.map(p => p.depth), 1);
+  const maxDepth = Math.max(...validPoints.map(p => p.depth || 0), 1);
 
   // Create points layer
-  const points = validPoints.map(p => turf.point(
-    [p.coords.longitude, p.coords.latitude],
-    { depth: p.depth, hasWeeds: p.hasWeeds }
-  ));
-  const fc = turf.featureCollection(points);
+  try {
+    const points = validPoints.map(p => turf.point(
+      [p.coords.longitude, p.coords.latitude],
+      { depth: p.depth, hasWeeds: p.hasWeeds }
+    ));
+    const fc = turf.featureCollection(points);
 
-  liveMapPointsLayer = L.geoJSON(fc, {
-    pointToLayer: function(feature, latlng) {
-      return L.circleMarker(latlng, {
-        radius: 6,
-        fillColor: getDepthColor(feature.properties.depth, maxDepth),
-        color: '#333',
-        weight: 1,
-        fillOpacity: 0.9
-      });
-    },
-    onEachFeature: function(feature, layer) {
-      const hasWeeds = feature.properties.hasWeeds ? ' (weeds)' : '';
-      layer.bindPopup(`${feature.properties.depth}m${hasWeeds}`);
-    }
-  }).addTo(liveMap);
+    liveMapPointsLayer = L.geoJSON(fc, {
+      pointToLayer: function(feature, latlng) {
+        return L.circleMarker(latlng, {
+          radius: 6,
+          fillColor: getDepthColor(feature.properties.depth, maxDepth),
+          color: '#333',
+          weight: 1,
+          fillOpacity: 0.9
+        });
+      },
+      onEachFeature: function(feature, layer) {
+        const hasWeeds = feature.properties.hasWeeds ? ' (weeds)' : '';
+        layer.bindPopup(`${feature.properties.depth}m${hasWeeds}`);
+      }
+    }).addTo(liveMap);
+  } catch (e) {
+    console.error('Failed to create points layer:', e);
+  }
 
   // Add contour lines (need at least 3 points)
   if (validPoints.length >= 3) {
@@ -1349,30 +1359,34 @@ async function updateLiveMapPoints() {
   }
 
   // Add weeds cloud to live map
-  const weedPoints = validPoints.filter(p => p.hasWeeds);
-  if (weedPoints.length > 0) {
-    const weedTurfPoints = weedPoints.map(p => turf.point([p.coords.longitude, p.coords.latitude]));
-    const buffered = weedTurfPoints.map(p => turf.buffer(p, 0.010, { units: 'kilometers' }));
-    let weedCloud;
-    try {
-      if (buffered.length === 1) {
-        weedCloud = buffered[0];
-      } else {
-        weedCloud = buffered.reduce((acc, buf) => {
-          try { return turf.union(acc, buf); } catch (e) { return acc; }
-        });
+  try {
+    const weedPoints = validPoints.filter(p => p.hasWeeds);
+    if (weedPoints.length > 0) {
+      const weedTurfPoints = weedPoints.map(p => turf.point([p.coords.longitude, p.coords.latitude]));
+      const buffered = weedTurfPoints.map(p => turf.buffer(p, 0.010, { units: 'kilometers' }));
+      let weedCloud;
+      try {
+        if (buffered.length === 1) {
+          weedCloud = buffered[0];
+        } else {
+          weedCloud = buffered.reduce((acc, buf) => {
+            try { return turf.union(acc, buf); } catch (e) { return acc; }
+          });
+        }
+      } catch (e) {
+        weedCloud = turf.featureCollection(buffered);
       }
-    } catch (e) {
-      weedCloud = turf.featureCollection(buffered);
+      liveMapWeedsLayer = L.geoJSON(weedCloud, {
+        style: { fillColor: '#228B22', fillOpacity: 0.5, color: '#228B22', weight: 0 },
+        onEachFeature: function(feature, layer) {
+          layer.on('add', function() {
+            if (layer._path) layer._path.style.filter = 'url(#weed-blur)';
+          });
+        }
+      }).addTo(liveMap);
     }
-    liveMapWeedsLayer = L.geoJSON(weedCloud, {
-      style: { fillColor: '#228B22', fillOpacity: 0.5, color: '#228B22', weight: 0 },
-      onEachFeature: function(feature, layer) {
-        layer.on('add', function() {
-          if (layer._path) layer._path.style.filter = 'url(#weed-blur)';
-        });
-      }
-    }).addTo(liveMap);
+  } catch (e) {
+    console.error('Failed to create weeds layer:', e);
   }
 
   // Add fish catches to live map
