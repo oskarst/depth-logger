@@ -61,6 +61,7 @@ const changeProjectBtn = $('#change-project-btn');
 const projectsList = $('#projects-list');
 const newProjectInput = $('#new-project-input');
 const addProjectBtn = $('#add-project-btn');
+const importFileInput = $('#import-file-input');
 const dataTableBody = document.querySelector('#data-table tbody');
 let depthMap = null;
 let currentProject = null; // { id, name }
@@ -116,11 +117,18 @@ function renderProjectsList(projects) {
         <div class="project-name">${p.name}</div>
         <div class="project-count">${p.readingsCount} readings</div>
       </div>
-      <button class="project-delete" data-id="${p.id}" title="Delete project">✕</button>
+      <div class="project-actions">
+        <button class="project-import" data-id="${p.id}" title="Import JSON">📥</button>
+        <button class="project-delete" data-id="${p.id}" title="Delete project">✕</button>
+      </div>
     `;
     div.addEventListener('click', (e) => {
-      if (e.target.classList.contains('project-delete')) return;
+      if (e.target.classList.contains('project-delete') || e.target.classList.contains('project-import')) return;
       selectProject(p);
+    });
+    div.querySelector('.project-import').addEventListener('click', (e) => {
+      e.stopPropagation();
+      triggerImport(p);
     });
     div.querySelector('.project-delete').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -128,6 +136,44 @@ function renderProjectsList(projects) {
     });
     projectsList.appendChild(div);
   }
+}
+
+let importTargetProject = null;
+
+function triggerImport(project) {
+  importTargetProject = project;
+  importFileInput.click();
+}
+
+async function handleImport(file) {
+  if (!importTargetProject || !file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const readings = Array.isArray(data) ? data : data.readings || [];
+
+    if (!readings.length) {
+      toast('No readings found in file');
+      return;
+    }
+
+    const res = await fetch(`/api/projects/${importTargetProject.id}/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ readings })
+    });
+    const result = await res.json();
+    if (result.ok) {
+      toast(`Imported ${result.imported} readings to ${importTargetProject.name}`);
+      loadProjects();
+    } else {
+      toast(result.error || 'Import failed');
+    }
+  } catch (e) {
+    toast('Error reading file: ' + e.message);
+  }
+  importTargetProject = null;
+  importFileInput.value = '';
 }
 
 function selectProject(project) {
@@ -351,6 +397,9 @@ newProjectInput.addEventListener('keypress', (e) => {
     const name = newProjectInput.value.trim();
     if (name) createProject(name);
   }
+});
+importFileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) handleImport(e.target.files[0]);
 });
 document.getElementById('loc-btn').addEventListener('click', async () => {
   const hasPerm = await ensureGeoPermission();

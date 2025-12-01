@@ -157,6 +157,38 @@ app.get('/api/projects/:id/readings', (req, res) => {
   }
 });
 
+// Import JSON data to a project
+app.post('/api/projects/:id/import', (req, res) => {
+  const projectId = parseInt(req.params.id);
+  const readings = req.body?.readings || req.body;
+
+  if (!projectId) {
+    return res.status(400).json({ ok: false, error: 'Invalid project id' });
+  }
+
+  // Handle both array and {readings: [...]} format
+  const data = Array.isArray(readings) ? readings : [];
+  if (!data.length) {
+    return res.status(400).json({ ok: false, error: 'No readings provided' });
+  }
+
+  try {
+    // Transform data to match expected format
+    const normalized = data.map(r => ({
+      depth: r.depth,
+      coords: r.coords || { latitude: r.latitude, longitude: r.longitude, accuracy: r.accuracy },
+      hasFish: r.hasFish || r.has_fish || false,
+      createdAt: r.createdAt || r.created_at || Date.now()
+    }));
+
+    insertMany(normalized, projectId);
+    res.json({ ok: true, imported: normalized.length });
+  } catch (err) {
+    console.error('Import error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
