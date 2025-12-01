@@ -908,35 +908,27 @@ async function renderDepthMap() {
       weedCloud = turf.featureCollection(buffered);
     }
 
-    // Add the cloud polygon layer with blur effect
+    // Add the cloud polygon layer with blur effect using SVG filter
     const cloudLayer = L.geoJSON(weedCloud, {
       style: {
         fillColor: '#228B22',
-        fillOpacity: 0.4,
+        fillOpacity: 0.5,
         color: '#228B22',
         weight: 0,
-        opacity: 0,
-        className: 'weed-cloud-blur'
-      }
-    });
-
-    // Add individual weed markers on top
-    const markersLayer = L.geoJSON(weedsFc, {
-      pointToLayer: function(feature, latlng) {
-        return L.circleMarker(latlng, {
-          radius: 5,
-          fillColor: '#228B22',
-          color: '#006400',
-          weight: 2,
-          fillOpacity: 0.8
-        });
+        opacity: 0
       },
       onEachFeature: function(feature, layer) {
-        layer.bindPopup(`Weeds at ${feature.properties.depth}m`);
+        if (layer._path) {
+          layer._path.style.filter = 'url(#weed-blur)';
+        } else {
+          layer.on('add', function() {
+            if (layer._path) layer._path.style.filter = 'url(#weed-blur)';
+          });
+        }
       }
     });
 
-    mapLayers.weeds = L.layerGroup([cloudLayer, markersLayer]).addTo(depthMap);
+    mapLayers.weeds = cloudLayer.addTo(depthMap);
   }
 
   // Fit bounds
@@ -1128,7 +1120,12 @@ async function updateLiveMapPoints() {
       weedCloud = turf.featureCollection(buffered);
     }
     L.geoJSON(weedCloud, {
-      style: { fillColor: '#228B22', fillOpacity: 0.4, color: '#228B22', weight: 0, className: 'weed-cloud-blur' }
+      style: { fillColor: '#228B22', fillOpacity: 0.5, color: '#228B22', weight: 0 },
+      onEachFeature: function(feature, layer) {
+        layer.on('add', function() {
+          if (layer._path) layer._path.style.filter = 'url(#weed-blur)';
+        });
+      }
     }).addTo(liveMap);
   }
 

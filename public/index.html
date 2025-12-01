@@ -15,6 +15,18 @@
   </script>
 </head>
 <body>
+  <!-- SVG filter for blur effect -->
+  <svg style="position:absolute;width:0;height:0;pointer-events:none">
+    <defs>
+      <filter id="weed-blur" x="-100%" y="-100%" width="300%" height="300%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="blur"/>
+        </feMerge>
+      </filter>
+    </defs>
+  </svg>
   <div class="app-shell light">
     <header class="topbar">
       <div id="last-saved" class="last-saved" aria-live="polite">Last saved: —</div>
