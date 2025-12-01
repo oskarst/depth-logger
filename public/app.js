@@ -56,7 +56,7 @@ const screenData = $('#screen-data');
 const screenMap = $('#screen-map');
 const loggerContent = $('#logger-content');
 const mapBtn = $('#map-btn');
-const projectBadge = $('#project-badge');
+const projectBadge = $('#bottombar-project');
 const changeProjectBtn = $('#change-project-btn');
 const projectsList = $('#projects-list');
 const newProjectInput = $('#new-project-input');
@@ -65,6 +65,7 @@ const importBtn = $('#import-btn');
 const importFileInput = $('#import-file-input');
 const dataTableBody = document.querySelector('#data-table tbody');
 let depthMap = null;
+let mapLayers = { depth: null, contours: null, points: null, weeds: null };
 let currentProject = null; // { id, name }
 
 let highRange = false;
@@ -162,6 +163,7 @@ async function handleImport(file) {
     const result = await res.json();
     if (result.ok) {
       toast(`Imported ${result.imported} readings`);
+      renderDataTable();
     } else {
       toast(result.error || 'Import failed');
     }
@@ -176,7 +178,7 @@ function selectProject(project) {
   currentProject = project;
   localStorage.setItem('currentProjectId', project.id);
   localStorage.setItem('currentProjectName', project.name);
-  projectBadge.textContent = `Project: ${project.name}`;
+  projectBadge.textContent = project.name;
   showScreen('logger');
 }
 
@@ -363,7 +365,8 @@ async function renderDataTable(){
       if (data.ok) {
         rows = data.readings.map(r => ({
           ...r,
-          coords: r.latitude ? { latitude: r.latitude, longitude: r.longitude, accuracy: r.accuracy } : null
+          coords: r.latitude ? { latitude: r.latitude, longitude: r.longitude, accuracy: r.accuracy } : null,
+          isServer: true
         }));
       }
     } catch (e) {
@@ -373,7 +376,7 @@ async function renderDataTable(){
 
   // Also get local unsynced entries
   const localRows = await withStore('readonly', (store, rp) => rp(store.getAll()));
-  const unsyncedLocal = localRows.filter(r => !r.synced);
+  const unsyncedLocal = localRows.filter(r => !r.synced).map(r => ({ ...r, isLocal: true }));
   rows = [...unsyncedLocal, ...rows];
 
   rows.sort((a,b) => b.createdAt - a.createdAt);
@@ -383,13 +386,72 @@ async function renderDataTable(){
     const t = new Date(r.createdAt).toLocaleString();
     const lat = r.coords ? r.coords.latitude.toFixed(5) : '';
     const lon = r.coords ? r.coords.longitude.toFixed(5) : '';
-    const synced = r.synced === false ? ' (local)' : '';
-    tr.innerHTML = `<td>${t}${synced}</td><td>${Number(r.depth).toFixed(1)}</td><td>${r.hasFish?'🐟':''}</td><td>${lat}</td><td>${lon}</td>`;
+    const synced = r.isLocal ? ' (local)' : '';
+    tr.innerHTML = `
+      <td>${t}${synced}</td>
+      <td>${Number(r.depth).toFixed(1)}</td>
+      <td>${r.hasFish?'🐟':''}</td>
+      <td>${lat}</td>
+      <td>${lon}</td>
+      <td class="row-actions">
+        <button class="row-btn edit-btn" title="Edit">✏️</button>
+        <button class="row-btn delete-btn" title="Delete">🗑️</button>
+      </td>
+    `;
+    tr.querySelector('.edit-btn').addEventListener('click', () => editReading(r));
+    tr.querySelector('.delete-btn').addEventListener('click', () => deleteReadingEntry(r));
     dataTableBody.appendChild(tr);
   }
   if (rows.length && rows[0].coords) {
     lastSavedPoint = rows[0].coords;
     updateLastSavedUI();
+  }
+}
+
+async function deleteReadingEntry(reading) {
+  if (!confirm('Delete this reading?')) return;
+  try {
+    if (reading.isServer) {
+      await fetch(`/api/readings/${reading.id}`, { method: 'DELETE' });
+    } else if (reading.isLocal) {
+      await withStore('readwrite', (store) => store.delete(reading.id));
+    }
+    renderDataTable();
+    toast('Reading deleted');
+  } catch (e) {
+    toast('Failed to delete');
+  }
+}
+
+function editReading(reading) {
+  const newDepth = prompt('Edit depth (m):', reading.depth);
+  if (newDepth === null) return;
+  const depth = parseFloat(newDepth);
+  if (isNaN(depth)) {
+    toast('Invalid depth');
+    return;
+  }
+  const hasFish = confirm('Has fish/weeds?');
+  updateReadingEntry(reading, depth, hasFish);
+}
+
+async function updateReadingEntry(reading, depth, hasFish) {
+  try {
+    if (reading.isServer) {
+      await fetch(`/api/readings/${reading.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ depth, hasFish })
+      });
+    } else if (reading.isLocal) {
+      reading.depth = depth;
+      reading.hasFish = hasFish;
+      await withStore('readwrite', (store) => store.put(reading));
+    }
+    renderDataTable();
+    toast('Reading updated');
+  } catch (e) {
+    toast('Failed to update');
   }
 }
 
@@ -421,6 +483,22 @@ importBtn.addEventListener('click', () => importFileInput.click());
 importFileInput.addEventListener('change', (e) => {
   if (e.target.files[0]) handleImport(e.target.files[0]);
 });
+
+// Layer visibility toggles
+['depth', 'contours', 'points', 'weeds'].forEach(name => {
+  const checkbox = document.getElementById('layer-' + name);
+  if (checkbox) {
+    checkbox.addEventListener('change', () => {
+      if (!depthMap || !mapLayers[name]) return;
+      if (checkbox.checked) {
+        depthMap.addLayer(mapLayers[name]);
+      } else {
+        depthMap.removeLayer(mapLayers[name]);
+      }
+    });
+  }
+});
+
 document.getElementById('loc-btn').addEventListener('click', async () => {
   const hasPerm = await ensureGeoPermission();
   if (!hasPerm) toast('Enable location in browser settings');
@@ -571,7 +649,7 @@ async function renderDepthMap() {
   }).addTo(depthMap);
 
   // Add TIN triangles
-  const tinLayer = L.geoJSON(tin, {
+  mapLayers.depth = L.geoJSON(tin, {
     style: function(feature) {
       const avgDepth = (feature.properties.a + feature.properties.b + feature.properties.c) / 3;
       return {
@@ -588,7 +666,7 @@ async function renderDepthMap() {
   const breaks = Array.from({length: Math.ceil(maxDepth)}, (_, i) => i + 1);
   const isobaths = turf.isolines(grid, breaks, { zProperty: 'depth' });
 
-  L.geoJSON(isobaths, {
+  mapLayers.contours = L.geoJSON(isobaths, {
     style: { color: '#000', weight: 1.5, opacity: 0.6, dashArray: '4,4' },
     onEachFeature: function(feature, layer) {
       if (feature.properties && feature.properties.depth) {
@@ -598,7 +676,7 @@ async function renderDepthMap() {
   }).addTo(depthMap);
 
   // Add depth points
-  L.geoJSON(fc, {
+  mapLayers.points = L.geoJSON(fc, {
     pointToLayer: function(feature, latlng) {
       return L.circleMarker(latlng, {
         radius: 4,
@@ -615,9 +693,10 @@ async function renderDepthMap() {
   }).addTo(depthMap);
 
   // Add weeds overlay
+  mapLayers.weeds = null;
   if (weedPoints.length > 0) {
     const weedsFc = turf.featureCollection(weedPoints);
-    L.geoJSON(weedsFc, {
+    mapLayers.weeds = L.geoJSON(weedsFc, {
       pointToLayer: function(feature, latlng) {
         return L.circleMarker(latlng, {
           radius: 8,
@@ -634,7 +713,15 @@ async function renderDepthMap() {
   }
 
   // Fit bounds
-  depthMap.fitBounds(tinLayer.getBounds(), { padding: [30, 30] });
+  depthMap.fitBounds(mapLayers.depth.getBounds(), { padding: [30, 30] });
+
+  // Sync layer visibility with checkboxes
+  ['depth', 'contours', 'points', 'weeds'].forEach(name => {
+    const checkbox = document.getElementById('layer-' + name);
+    if (checkbox && mapLayers[name]) {
+      if (!checkbox.checked) depthMap.removeLayer(mapLayers[name]);
+    }
+  });
 
   // Render legend
   const legendEl = document.getElementById('map-legend');
@@ -667,7 +754,7 @@ function toast(msg){
   const savedProjectName = localStorage.getItem('currentProjectName');
   if (savedProjectId && savedProjectName) {
     currentProject = { id: parseInt(savedProjectId), name: savedProjectName };
-    projectBadge.textContent = `Project: ${savedProjectName}`;
+    projectBadge.textContent = savedProjectName;
     showScreen('logger');
   } else {
     showScreen('projects');

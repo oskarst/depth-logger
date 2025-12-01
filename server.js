@@ -74,6 +74,8 @@ const deleteProjectWithReadings = db.transaction((projectId) => {
 });
 
 const clearProjectReadings = db.prepare(`DELETE FROM readings WHERE project_id = ?`);
+const deleteReading = db.prepare(`DELETE FROM readings WHERE id = ?`);
+const updateReading = db.prepare(`UPDATE readings SET depth = ?, has_fish = ? WHERE id = ?`);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -168,6 +170,35 @@ app.delete('/api/projects/:id/readings', (req, res) => {
   try {
     const result = clearProjectReadings.run(projectId);
     res.json({ ok: true, deleted: result.changes });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Delete single reading
+app.delete('/api/readings/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  if (!id) {
+    return res.status(400).json({ ok: false, error: 'Invalid reading id' });
+  }
+  try {
+    deleteReading.run(id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Update single reading
+app.patch('/api/readings/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  const { depth, hasFish } = req.body;
+  if (!id) {
+    return res.status(400).json({ ok: false, error: 'Invalid reading id' });
+  }
+  try {
+    updateReading.run(depth, hasFish ? 1 : 0, id);
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

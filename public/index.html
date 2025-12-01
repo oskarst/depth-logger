@@ -38,10 +38,6 @@
 
       <div id="logger-content" class="logger-content hidden">
         <div class="status-row">
-          <span id="project-badge" class="badge project-badge">Project: —</span>
-          <button id="change-project-btn" class="btn small ghost" title="Change project">Change</button>
-        </div>
-        <div class="status-row">
           <span id="coord-status" class="badge">GPS: Unknown</span>
           <span id="offline-badge" class="badge secondary">Offline ready</span>
           <button id="loc-btn" class="btn small" title="Enable GPS">Enable GPS</button>
@@ -74,6 +70,7 @@
                   <th>Fish</th>
                   <th>Lat</th>
                   <th>Lon</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -87,8 +84,14 @@
         <div class="map-wrap">
           <div class="map-header">
             <div class="map-title">Depth Map</div>
-            <div class="map-legend" id="map-legend"></div>
+            <div class="map-layers" id="map-layers">
+              <label class="layer-toggle"><input type="checkbox" id="layer-depth" checked><span>Depth</span></label>
+              <label class="layer-toggle"><input type="checkbox" id="layer-contours" checked><span>Contours</span></label>
+              <label class="layer-toggle"><input type="checkbox" id="layer-points" checked><span>Points</span></label>
+              <label class="layer-toggle"><input type="checkbox" id="layer-weeds" checked><span>Weeds</span></label>
+            </div>
           </div>
+          <div class="map-legend" id="map-legend"></div>
           <div id="depth-map"></div>
         </div>
       </section>
@@ -96,9 +99,15 @@
     </main>
 
     <footer class="bottombar">
-      <button id="fish-btn" class="fish-btn" title="Tag last point as Has Fish" aria-label="Has Fish">🐟</button>
-      <button id="map-btn" class="map-btn" title="Open depth map">🗺️</button>
-      <button id="data-btn" class="map-btn" title="Open data">📋</button>
+      <div class="bottombar-left">
+        <span id="bottombar-project" class="bottombar-project">No project</span>
+        <button id="change-project-btn" class="btn small ghost" title="Change project">Change</button>
+      </div>
+      <div class="bottombar-right">
+        <button id="fish-btn" class="fish-btn" title="Tag last point as Has Fish" aria-label="Has Fish">🐟</button>
+        <button id="map-btn" class="map-btn" title="Open depth map">🗺️</button>
+        <button id="data-btn" class="map-btn" title="Open data">📋</button>
+      </div>
     </footer>
   </div>
 
