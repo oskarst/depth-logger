@@ -294,12 +294,19 @@ function renderPad() {
   } else {
     for (let n=1; n<=9; n++) keys.push({ label: String(n), value: n, decimal:true });
     keys.push({ label: '0', value: 0, decimal:true });
+    keys.push({ label: '✕', value: null, cancel:true });
   }
   for (const k of keys) {
     const btn = document.createElement('button');
-    btn.className = 'key' + (k.toggler ? ' toggler' : '');
+    btn.className = 'key' + (k.toggler ? ' toggler' : '') + (k.cancel ? ' cancel' : '');
     btn.textContent = k.label;
     btn.addEventListener('click', async () => {
+      if (k.cancel) {
+        awaitingDecimal = null;
+        renderPad();
+        toast('Cancelled');
+        return;
+      }
       if (k.toggler) {
         highRange = !highRange;
         renderPad();
@@ -1112,13 +1119,20 @@ function renderLivePad(container) {
     }
   } else {
     for (let n=0; n<=9; n++) keys.push({ label: String(n), value: n, decimal:true });
+    keys.push({ label: '✕', value: null, cancel:true });
   }
 
   for (const k of keys) {
     const btn = document.createElement('button');
-    btn.className = 'key' + (k.toggler ? ' toggler' : '');
+    btn.className = 'key' + (k.toggler ? ' toggler' : '') + (k.cancel ? ' cancel' : '');
     btn.textContent = k.label;
     btn.addEventListener('click', async () => {
+      if (k.cancel) {
+        awaitingDecimal = null;
+        renderLivePad(container);
+        toast('Cancelled');
+        return;
+      }
       if (k.toggler) {
         highRange = !highRange;
         renderLivePad(container);

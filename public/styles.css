@@ -59,6 +59,7 @@ tbody tr:hover{ background: #f9fbfd; }
   box-shadow: 0 6px 12px rgba(15,23,42,.06), inset 0 1px 0 rgba(255,255,255,.65);
 }
 .key.toggler{ color: var(--muted); font-weight:800; font-size: clamp(14px, 4.5vw, 20px); }
+.key.cancel{ background: linear-gradient(180deg, #fef2f2, #fee2e2); border-color: rgba(220,38,38,.3); color: #b91c1c; }
 .key:active{ transform: translateY(1px) scale(.99); filter: brightness(.98); box-shadow: 0 4px 10px rgba(15,23,42,.08) inset; }
 
 .bottombar{ position: fixed; bottom: 0; left: 0; right:0; display:flex; align-items:center; justify-content:space-between; background: linear-gradient(0deg, rgba(255,255,255,.95), rgba(255,255,255,.85)); backdrop-filter: blur(6px); padding: 12px 16px 20px; border-top: 1px solid var(--border); }
