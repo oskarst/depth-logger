@@ -3,6 +3,8 @@
 A phone-first PWA for logging lake depth soundings: tap a depth, it is stamped
 with your GPS position, and the points build a depth map with contours.
 
+Live at **https://lake.dig.ge** (behind HTTP basic auth). See [DEPLOY.md](DEPLOY.md).
+
 ```bash
 npm install
 npm start          # http://localhost:4567
