@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'lake-logger-static-1791887744';
+const STATIC_CACHE = 'lake-logger-static-1791888207';
 const TILE_CACHE = 'lake-logger-tiles-v1';
 const MAX_TILES = 600;
 

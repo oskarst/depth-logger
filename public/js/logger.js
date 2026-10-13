@@ -1,4 +1,4 @@
-import { addLocal } from './store.js';
+import { addLocal, newClientId } from './store.js';
 import { getProjectId } from './state.js';
 import { getFreshFix, ensurePermission, startTracking } from './gps.js';
 import { emit } from './events.js';
@@ -37,6 +37,7 @@ export async function logPoint(depth, isShore = false) {
   const fix = await getFreshFix();
   const reading = {
     projectId,
+    clientId: newClientId(),
     depth,
     coords: fix ? { latitude: fix.latitude, longitude: fix.longitude, accuracy: fix.accuracy } : null,
     hasWeeds: false,

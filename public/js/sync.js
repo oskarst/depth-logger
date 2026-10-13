@@ -1,5 +1,5 @@
 import * as api from './api.js';
-import { getUnsynced, markSynced, countUnsynced } from './store.js';
+import { getUnsynced, markSynced, countUnsynced, putLocal, newClientId } from './store.js';
 import { getProjectId } from './state.js';
 import { emit, on } from './events.js';
 
@@ -8,12 +8,21 @@ const RETRY_MS = 30000;
 let pushing = false;
 let retryTimer = null;
 
-// A reading is pushed under a clientId, so a retry after a dropped response is
-// ignored by the server instead of inserting the point twice.
-function withClientId(reading) {
-  if (reading.clientId) return reading;
-  const clientId = (crypto.randomUUID?.() || `${reading.createdAt}-${Math.random().toString(36).slice(2)}`);
-  return { ...reading, clientId };
+// Rows logged before clientIds existed get one now, written back to the store
+// first: an id invented per attempt would differ on every retry and defeat the
+// server's deduplication entirely.
+async function ensureClientIds(readings) {
+  const out = [];
+  for (const reading of readings) {
+    if (reading.clientId) {
+      out.push(reading);
+      continue;
+    }
+    const stamped = { ...reading, clientId: newClientId() };
+    await putLocal(stamped);
+    out.push(stamped);
+  }
+  return out;
 }
 
 export async function queuedCount() {
@@ -35,7 +44,7 @@ export async function pushQueue({ silent = true } = {}) {
 
   let queued;
   try {
-    queued = (await getUnsynced(projectId)).map(withClientId);
+    queued = await ensureClientIds(await getUnsynced(projectId));
   } catch (e) {
     console.error('Could not read the local queue', e);
     return null;

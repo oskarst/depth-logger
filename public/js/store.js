@@ -10,6 +10,14 @@ const DB_VERSION = 2;
 
 let db;
 
+// Minted once per reading, when it is created, and kept with it. A retry after
+// a dropped response must re-send the same id or the server cannot tell the
+// retry from a second sounding.
+export function newClientId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);

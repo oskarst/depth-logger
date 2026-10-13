@@ -133,16 +133,55 @@ JSON.stringify(aSurvived) === JSON.stringify(['7.5','8.0'])
   ? ok("clearing project B left project A's queued points untouched")
   : bad("project A now shows " + JSON.stringify(aSurvived) + ' — clear destroyed another project\'s data');
 
-// === back online: the queue drains by itself ===
+// === a push the server accepted but the client never heard about ===
+// This is the dropped-response case: the rows are on the server, yet still
+// queued here. The retry must carry the same clientIds or it duplicates them.
 await page.setOfflineMode(false);
+const idsBefore = await page.evaluate(() => new Promise(res => {
+  const req = indexedDB.open('lakeLogger');
+  req.onsuccess = () => {
+    const all = req.result.transaction('readings').objectStore('readings').getAll();
+    all.onsuccess = () => res(all.result.filter(r => !r.synced).map(r => r.clientId));
+  };
+}));
+idsBefore.every(Boolean) && idsBefore.length === 2
+  ? ok('queued readings carry a clientId of their own')
+  : bad('queued readings are missing clientIds: ' + JSON.stringify(idsBefore));
+
+await page.evaluate(async (id) => {
+  const rows = await new Promise(res => {
+    const req = indexedDB.open('lakeLogger');
+    req.onsuccess = () => {
+      const all = req.result.transaction('readings').objectStore('readings').getAll();
+      all.onsuccess = () => res(all.result.filter(r => !r.synced));
+    };
+  });
+  // Straight to the server, behind the app's back: it never learns this worked.
+  await fetch(`/api/projects/${id}/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ readings: rows })
+  });
+}, idA);
+
 await page.evaluate(() => window.dispatchEvent(new Event('online')));
 await wait(2500);
+
+const idsAfter = await page.evaluate(() => new Promise(res => {
+  const req = indexedDB.open('lakeLogger');
+  req.onsuccess = () => {
+    const all = req.result.transaction('readings').objectStore('readings').getAll();
+    all.onsuccess = () => res(all.result.map(r => r.clientId));
+  };
+}));
+idsBefore.every(id => idsAfter.includes(id))
+  ? ok('clientIds survive the retry instead of being minted again')
+  : bad('clientIds changed between attempts: ' + JSON.stringify({ idsBefore, idsAfter }));
 const synced = await page.evaluate(async (id) => {
   const d = await (await fetch(`/api/projects/${id}/readings`)).json();
   return d.readings.map(r => r.depth).sort();
 }, idA);
 JSON.stringify(synced) === JSON.stringify([7.5, 8])
-  ? ok('coming back online drained the queue to the server with no manual sync')
+  ? ok('the retry drained the queue without duplicating what the server already had')
   : bad('server holds ' + JSON.stringify(synced) + ' after reconnecting');
 
 const badgeAfter = await queuedBadge();
