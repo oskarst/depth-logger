@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node test/e2e/verify-app.mjs && node test/e2e/verify-offline.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.5.0",
