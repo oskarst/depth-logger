@@ -159,3 +159,30 @@ tbody tr:hover{ background: #f9fbfd; }
   .key{ border-radius: 10px; }
   #depth-map{ height: 43vh; }
 }
+
+/* Queued-points badge, water-level offset badge and map notes */
+.badge.warn {
+  background: #fde68a;
+  color: #713f12;
+}
+
+.badge.offset {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+.live-line.stale {
+  color: #92400e;
+}
+
+.legend-note,
+.legend-offset {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.projects-empty {
+  text-align: center;
+  color: #666;
+  padding: 20px;
+}

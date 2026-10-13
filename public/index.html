@@ -7,7 +7,8 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#f7fafc">
   <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/vendor/leaflet.css" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js'));
@@ -51,7 +52,8 @@
       <div id="logger-content" class="logger-content hidden">
         <div class="status-row">
           <span id="coord-status" class="badge">GPS: Unknown</span>
-          <span id="offline-badge" class="badge secondary">Offline ready</span>
+          <span id="offline-badge" class="badge secondary">All synced</span>
+          <span id="offset-badge" class="badge offset hidden"></span>
           <div class="settings-dropdown">
             <button id="settings-btn" class="btn small">Settings</button>
             <div id="settings-menu" class="settings-menu hidden">
@@ -283,8 +285,9 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
-  <script src="/app.js" type="module"></script>
+  <!-- Vendored so the map still works with no signal. -->
+  <script src="/vendor/leaflet.js"></script>
+  <script src="/vendor/turf.min.js"></script>
+  <script src="/js/app.js" type="module"></script>
 </body>
 </html>
